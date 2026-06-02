@@ -41,7 +41,7 @@ export default function QueueItem({ item, onOpen, onReview, onRefresh, onSkip, r
           <button className="btn btn-sm" onClick={onOpen} title="Open LeetCode + review">Open</button>
           <button className="btn btn-sm" onClick={onReview} title="Review without opening LeetCode">Review</button>
           <button className="btn btn-sm" onClick={onRefresh} disabled={refreshing} title="Swap for a different problem">
-            {refreshing ? '…' : '↺'}
+            {refreshing ? 'Swapping…' : 'Swap'}
           </button>
           <button className="btn btn-sm" onClick={onSkip} title="Skip for today">Skip</button>
         </div>
