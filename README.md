@@ -63,6 +63,9 @@ npm run seed
 
 This populates:
 - **NeetCode 150** — full problem list
+- **Blind 75** — the original curated 75; shares rows with their NeetCode 150
+  counterparts (dedup is by title + URL), so it adds a second list membership rather
+  than duplicate problems
 - **Design Questions** — 25 canonical design problems
 - **Topic settings** — sensible defaults (2 problems/day per topic; Dynamic Programming disabled by default)
 
@@ -357,23 +360,6 @@ A single row (`id = 1`) holding `active_list` — the list the daily queue draws
    reads when computing a review's next due date.
 8. **`list_settings.active_list` ↔ `problem_lists.list_name`** — matched by string; the
    queue only considers problems whose `problem_lists` membership includes the active list.
-
-Three **real foreign-key links** (`REFERENCES` in the schema):
-
-1. **`reviews.problem_id` → `problems.id`** — a problem has many reviews (its history).
-2. **`daily_queue_items.problem_id` → `problems.id`** — a queue item is one problem.
-3. **`daily_queue_items.queue_id` → `daily_queues.id`** — items belong to one day.
-
-Two **soft links** (matched by value, *not* enforced):
-
-4. **`topic_settings.topic` ↔ `problems.topic`** — matched by the topic string. To keep
-   this soft link from silently orphaning problems, `ensureTopicSettingsForAllProblems`
-   auto-creates a `topic_settings` row (enabled, 2/day) for every topic found in
-   `problems` — on each app launch, during seeding, and whenever a problem is added.
-   So new topics are schedulable without any manual setup.
-5. **`difficulty_settings`** isn't linked to any row — it's a global filter the generator reads.
-6. **`rating_intervals`** isn't linked to any row either — it's pure config the scheduler
-   reads when computing a review's next due date.
 
 "Is a problem due?" comes from the **latest** review per problem, compared against
 today's date. "Latest" is determined consistently by the **highest `reviews.id`**
