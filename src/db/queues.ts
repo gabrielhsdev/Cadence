@@ -1,5 +1,19 @@
 import Database from 'better-sqlite3';
-import { DailyQueue, DailyQueueItem, QueueItemWithProblem } from '../types';
+import { DailyQueue, DailyQueueItem, QueueItemWithProblem, ReviewStatus } from '../types';
+
+// Shared SELECT for a queue item joined to its problem and latest review.
+// Callers append their own WHERE clause (by queue_id or by item id).
+const QUEUE_ITEM_SELECT = `
+  SELECT
+    dqi.id, dqi.queue_id, dqi.problem_id, dqi.status,
+    p.title, p.topic, p.difficulty, p.leetcode_url, p.list_name,
+    r.id as review_id, r.rating, r.notes, r.reviewed_at, r.next_review_at
+  FROM daily_queue_items dqi
+  JOIN problems p ON p.id = dqi.problem_id
+  LEFT JOIN reviews r ON r.id = (
+    SELECT id FROM reviews WHERE problem_id = dqi.problem_id ORDER BY id DESC LIMIT 1
+  )
+`;
 
 export function getQueueForDate(db: Database.Database, date: string): DailyQueue | undefined {
   return db
@@ -31,19 +45,7 @@ export function addQueueItem(
 
 export function getQueueItems(db: Database.Database, queueId: number): QueueItemWithProblem[] {
   return db
-    .prepare(`
-      SELECT
-        dqi.id, dqi.queue_id, dqi.problem_id, dqi.status,
-        p.title, p.topic, p.difficulty, p.leetcode_url, p.list_name,
-        r.id as review_id, r.rating, r.notes, r.reviewed_at, r.next_review_at
-      FROM daily_queue_items dqi
-      JOIN problems p ON p.id = dqi.problem_id
-      LEFT JOIN reviews r ON r.id = (
-        SELECT id FROM reviews WHERE problem_id = dqi.problem_id ORDER BY id DESC LIMIT 1
-      )
-      WHERE dqi.queue_id = ?
-      ORDER BY p.topic, p.title
-    `)
+    .prepare(`${QUEUE_ITEM_SELECT} WHERE dqi.queue_id = ? ORDER BY p.topic, p.title`)
     .all(queueId)
     .map((row) => mapRow(row as Record<string, unknown>)) as QueueItemWithProblem[];
 }
@@ -58,7 +60,7 @@ export function getQueueItemIds(db: Database.Database, queueId: number): number[
 export function updateQueueItemStatus(
   db: Database.Database,
   itemId: number,
-  status: 'pending' | 'completed' | 'skipped'
+  status: ReviewStatus
 ): void {
   db.prepare('UPDATE daily_queue_items SET status = ? WHERE id = ?').run(status, itemId);
 }
@@ -83,18 +85,7 @@ export function getQueueItem(
   itemId: number
 ): QueueItemWithProblem | undefined {
   const row = db
-    .prepare(`
-      SELECT
-        dqi.id, dqi.queue_id, dqi.problem_id, dqi.status,
-        p.title, p.topic, p.difficulty, p.leetcode_url, p.list_name,
-        r.id as review_id, r.rating, r.notes, r.reviewed_at, r.next_review_at
-      FROM daily_queue_items dqi
-      JOIN problems p ON p.id = dqi.problem_id
-      LEFT JOIN reviews r ON r.id = (
-        SELECT id FROM reviews WHERE problem_id = dqi.problem_id ORDER BY id DESC LIMIT 1
-      )
-      WHERE dqi.id = ?
-    `)
+    .prepare(`${QUEUE_ITEM_SELECT} WHERE dqi.id = ?`)
     .get(itemId);
   return row ? mapRow(row as Record<string, unknown>) : undefined;
 }
@@ -104,7 +95,7 @@ function mapRow(row: Record<string, unknown>): QueueItemWithProblem {
     id: row.id as number,
     queue_id: row.queue_id as number,
     problem_id: row.problem_id as number,
-    status: row.status as 'pending' | 'completed' | 'skipped',
+    status: row.status as ReviewStatus,
     problem: {
       id: row.problem_id as number,
       title: row.title as string,
