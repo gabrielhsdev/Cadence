@@ -12,6 +12,15 @@ import {
 } from '../db/queues';
 import { getDifficultySettings, getTopicSettings } from '../db/settings';
 
+function getEnabledDifficulties(db: Database.Database): Difficulty[] {
+  const diffSettings = getDifficultySettings(db);
+  const enabled: Difficulty[] = [];
+  if (diffSettings.easy) enabled.push('Easy');
+  if (diffSettings.medium) enabled.push('Medium');
+  if (diffSettings.hard) enabled.push('Hard');
+  return enabled;
+}
+
 export function getOrGenerateQueue(db: Database.Database, today: string): QueueGroupedByTopic[] {
   const existing = getQueueForDate(db, today);
   if (existing) {
@@ -22,11 +31,7 @@ export function getOrGenerateQueue(db: Database.Database, today: string): QueueG
 
 export function generateQueue(db: Database.Database, today: string): QueueGroupedByTopic[] {
   const topicSettings = getTopicSettings(db);
-  const diffSettings = getDifficultySettings(db);
-  const enabledDifficulties: Difficulty[] = [];
-  if (diffSettings.easy) enabledDifficulties.push('Easy');
-  if (diffSettings.medium) enabledDifficulties.push('Medium');
-  if (diffSettings.hard) enabledDifficulties.push('Hard');
+  const enabledDifficulties = getEnabledDifficulties(db);
 
   const reviewedToday = getProblemsReviewedToday(db, today);
 
@@ -70,11 +75,7 @@ export function refreshQueueItem(
   queueId: number,
   today: string
 ): QueueItemWithProblem | null {
-  const diffSettings = getDifficultySettings(db);
-  const enabledDifficulties: Difficulty[] = [];
-  if (diffSettings.easy) enabledDifficulties.push('Easy');
-  if (diffSettings.medium) enabledDifficulties.push('Medium');
-  if (diffSettings.hard) enabledDifficulties.push('Hard');
+  const enabledDifficulties = getEnabledDifficulties(db);
 
   const reviewedToday = getProblemsReviewedToday(db, today);
   const inQueue = getQueueItemIds(db, queueId);
@@ -92,6 +93,33 @@ export function refreshQueueItem(
 
   const items = getQueueItems(db, queueId);
   return items.find((i) => i.problem_id === replacement.id) ?? null;
+}
+
+// Add more problems for a single topic (respects difficulty filters, dedupes)
+export function addMoreForTopic(
+  db: Database.Database,
+  topic: string,
+  count: number,
+  today: string
+): { added: number; exhausted: boolean } {
+  let queue = getQueueForDate(db, today);
+  if (!queue) queue = createQueue(db, today);
+
+  const enabledDifficulties = getEnabledDifficulties(db);
+  const reviewedToday = getProblemsReviewedToday(db, today);
+  const inQueue = getQueueItemIds(db, queue.id);
+  const excludeIds = [...new Set([...reviewedToday, ...inQueue])];
+
+  const eligible = getEligibleProblems(db, topic, today, enabledDifficulties, excludeIds);
+  const toAdd = Math.min(count, eligible.length);
+
+  db.transaction(() => {
+    for (let i = 0; i < toAdd; i++) {
+      addQueueItem(db, queue!.id, eligible[i].id);
+    }
+  })();
+
+  return { added: toAdd, exhausted: eligible.length === 0 };
 }
 
 function groupByTopic(items: QueueItemWithProblem[]): QueueGroupedByTopic[] {

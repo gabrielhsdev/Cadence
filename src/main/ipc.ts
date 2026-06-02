@@ -1,20 +1,41 @@
 import { ipcMain, shell, dialog } from 'electron';
+import Database from 'better-sqlite3';
 import fs from 'fs';
 import { getDb } from '../db/connection';
-import { getAllProblems, searchProblems, addProblem, getEligibleProblems } from '../db/problems';
-import { insertReview, getReviewHistory, resetAllProgress, importReviews } from '../db/reviews';
+import { getAllProblems, searchProblems, addProblem, getProblemListNames } from '../db/problems';
+import {
+  insertReview,
+  getReviewHistory,
+  resetAllProgress,
+  importReviews,
+  getProblemsReviewedToday,
+} from '../db/reviews';
 import { rowsToCsv, csvToRows, CsvRow } from './csv';
-import { getQueueItems, updateQueueItemStatus, getQueueItem, getQueueForDate, createQueue, addQueueItem, getQueueItemIds, deleteQueueForDate } from '../db/queues';
-import { getProblemsReviewedToday } from '../db/reviews';
-import { getTopicSettings, upsertTopicSetting, getDifficultySettings, updateDifficultySettings } from '../db/settings';
-import { getOrGenerateQueue, generateQueue, refreshQueueItem } from '../queue/generator';
-import { getNextReviewDate, todayIso } from '../scheduling/scheduler';
-import { NewProblem, ReviewPayload, TopicSetting, DifficultySettings, QueueGroupedByTopic } from '../types';
+import {
+  getQueueItems,
+  updateQueueItemStatus,
+  getQueueItem,
+  getQueueForDate,
+  createQueue,
+  addQueueItem,
+  getQueueItemIds,
+  deleteQueueForDate,
+} from '../db/queues';
+import {
+  getTopicSettings,
+  upsertTopicSetting,
+  getDifficultySettings,
+  updateDifficultySettings,
+  getRatingIntervals,
+  setRatingIntervals,
+  ensureRatingIntervals,
+  ensureTopicSettingsForAllProblems,
+} from '../db/settings';
+import { getOrGenerateQueue, generateQueue, refreshQueueItem, addMoreForTopic } from './generator';
+import { getNextReviewDate, todayIso, DEFAULT_RATING_INTERVALS } from './scheduler';
+import { NewProblem, ReviewPayload, TopicSetting, DifficultySettings, RatingIntervals, QueueGroupedByTopic } from '../types';
 
-export function registerIpcHandlers(): void {
-  const db = getDb();
-
-  // Queue
+function registerQueueHandlers(db: Database.Database): void {
   ipcMain.handle('queue:get-today', async (): Promise<QueueGroupedByTopic[]> => {
     const today = todayIso();
     return getOrGenerateQueue(db, today);
@@ -31,46 +52,20 @@ export function registerIpcHandlers(): void {
     return generateQueue(db, today);
   });
 
-  ipcMain.handle(
-    'queue:refresh-item',
-    async (_event, itemId: number, topic: string) => {
-      const today = todayIso();
-      const item = getQueueItem(db, itemId);
-      if (!item) return null;
-      return refreshQueueItem(db, itemId, topic, item.queue_id, today);
-    }
-  );
+  ipcMain.handle('queue:refresh-item', async (_event, itemId: number, topic: string) => {
+    const today = todayIso();
+    const item = getQueueItem(db, itemId);
+    if (!item) return null;
+    return refreshQueueItem(db, itemId, topic, item.queue_id, today);
+  });
 
   ipcMain.handle('queue:skip-item', async (_event, itemId: number) => {
     updateQueueItemStatus(db, itemId, 'skipped');
   });
 
-  // Add more problems for a single topic (respects difficulty filters, dedupes)
   ipcMain.handle('queue:add-more-for-topic', async (_event, topic: string, count: number) => {
     const today = todayIso();
-    let queue = getQueueForDate(db, today);
-    if (!queue) queue = createQueue(db, today);
-
-    const diffSettings = getDifficultySettings(db);
-    const enabledDifficulties: ('Easy' | 'Medium' | 'Hard')[] = [];
-    if (diffSettings.easy) enabledDifficulties.push('Easy');
-    if (diffSettings.medium) enabledDifficulties.push('Medium');
-    if (diffSettings.hard) enabledDifficulties.push('Hard');
-
-    const reviewedToday = getProblemsReviewedToday(db, today);
-    const inQueue = getQueueItemIds(db, queue.id);
-    const excludeIds = [...new Set([...reviewedToday, ...inQueue])];
-
-    const eligible = getEligibleProblems(db, topic, today, enabledDifficulties, excludeIds);
-    const toAdd = Math.min(count, eligible.length);
-
-    db.transaction(() => {
-      for (let i = 0; i < toAdd; i++) {
-        addQueueItem(db, queue!.id, eligible[i].id);
-      }
-    })();
-
-    return { added: toAdd, exhausted: eligible.length === 0 };
+    return addMoreForTopic(db, topic, count, today);
   });
 
   // Manually add a specific problem to today's queue
@@ -91,16 +86,19 @@ export function registerIpcHandlers(): void {
     const newItem = items.find((i) => i.problem_id === problemId && i.status === 'pending');
     return { ok: true, item: newItem ?? null };
   });
+}
 
-  // Reviews
+function registerReviewHandlers(db: Database.Database): void {
   ipcMain.handle('review:submit', async (_event, payload: ReviewPayload) => {
     const today = todayIso();
-    const nextReview = getNextReviewDate(payload.rating, today);
+    const intervals = getRatingIntervals(db);
+    const nextReview = getNextReviewDate(payload.rating, today, intervals);
     insertReview(db, payload.problem_id, payload.rating, payload.notes, today, nextReview);
     updateQueueItemStatus(db, payload.queue_item_id, 'completed');
   });
+}
 
-  // Problems
+function registerProblemsHandlers(db: Database.Database): void {
   ipcMain.handle('problems:get-all', async () => getAllProblems(db));
 
   ipcMain.handle('problems:search', async (_event, query: string) =>
@@ -110,8 +108,9 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('problems:add', async (_event, problem: NewProblem) =>
     addProblem(db, problem)
   );
+}
 
-  // Settings
+function registerSettingsHandlers(db: Database.Database): void {
   ipcMain.handle('settings:get-topics', async () => getTopicSettings(db));
 
   ipcMain.handle('settings:update-topic', async (_event, setting: TopicSetting) =>
@@ -124,7 +123,14 @@ export function registerIpcHandlers(): void {
     updateDifficultySettings(db, settings)
   );
 
-  // History
+  ipcMain.handle('settings:get-intervals', async () => getRatingIntervals(db));
+
+  ipcMain.handle('settings:update-intervals', async (_event, intervals: RatingIntervals) =>
+    setRatingIntervals(db, intervals)
+  );
+}
+
+function registerHistoryHandlers(db: Database.Database): void {
   ipcMain.handle('history:get-all', async () => getReviewHistory(db));
 
   ipcMain.handle('history:reset', async () => resetAllProgress(db));
@@ -153,8 +159,7 @@ export function registerIpcHandlers(): void {
 
     // Fetch list_name separately and merge
     const listMap = new Map<number, string>(
-      (db.prepare('SELECT id, list_name FROM problems').all() as { id: number; list_name: string }[])
-        .map((r) => [r.id, r.list_name])
+      getProblemListNames(db).map((r) => [r.id, r.list_name])
     );
     entries.forEach((e, i) => {
       csvRows[i].list_name = listMap.get(e.problem_id) ?? '';
@@ -196,6 +201,21 @@ export function registerIpcHandlers(): void {
     const result = importReviews(db, mapped);
     return { ok: true, ...result };
   });
+}
+
+export function registerIpcHandlers(): void {
+  const db = getDb();
+
+  // Seed any missing rating-interval rows from the scheduler's defaults.
+  ensureRatingIntervals(db, DEFAULT_RATING_INTERVALS);
+  // Make sure every topic that has problems is schedulable (auto-registers new topics).
+  ensureTopicSettingsForAllProblems(db);
+
+  registerQueueHandlers(db);
+  registerReviewHandlers(db);
+  registerProblemsHandlers(db);
+  registerSettingsHandlers(db);
+  registerHistoryHandlers(db);
 
   // Shell
   ipcMain.handle('shell:open-url', async (_event, url: string) => {

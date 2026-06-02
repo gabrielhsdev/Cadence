@@ -13,5 +13,6 @@
     "noUnusedParameters": false,
     "esModuleInterop": true
   },
-  "include": ["src/main", "src/db", "src/queue", "src/scheduling", "src/seed", "src/types"]
+  "include": ["src/main", "src/db", "src/seed", "src/types.ts"],
+  "exclude": ["**/*.test.ts"]
 }

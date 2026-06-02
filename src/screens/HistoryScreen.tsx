@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ReviewHistoryEntry } from '../types';
 import { api } from '../renderer/api';
+import ConfirmModal from '../components/ConfirmModal';
 
 const RATING_LABEL: Record<number, string> = {
   1: 'Blank',
@@ -209,30 +210,20 @@ export default function HistoryScreen(): React.ReactElement {
       )}
 
       {confirmReset && (
-        <div className="modal-overlay" onClick={() => setConfirmReset(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-title">Reset all progress?</div>
-            <div className="modal-subtitle" style={{ marginBottom: 20, lineHeight: 1.6 }}>
-              This permanently deletes all reviews, today's queue, and scheduling history.
-              Your problem list and settings are kept.
-              <br />
-              <strong style={{ color: 'var(--text)' }}>This cannot be undone.</strong>
-            </div>
-            <div className="modal-actions">
-              <button className="btn" onClick={() => setConfirmReset(false)}>
-                Cancel
-              </button>
-              <button
-                className="btn"
-                style={{ background: 'var(--danger)', borderColor: 'var(--danger)', color: '#fff' }}
-                onClick={handleReset}
-                disabled={resetting}
-              >
-                {resetting ? 'Resetting…' : 'Yes, reset everything'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmModal
+          title="Reset all progress?"
+          confirmLabel={resetting ? 'Resetting…' : 'Yes, reset everything'}
+          confirmDisabled={resetting}
+          confirmClassName="btn"
+          confirmStyle={{ background: 'var(--danger)', borderColor: 'var(--danger)', color: '#fff' }}
+          onConfirm={handleReset}
+          onClose={() => setConfirmReset(false)}
+        >
+          This permanently deletes all reviews, today's queue, and scheduling history.
+          Your problem list and settings are kept.
+          <br />
+          <strong style={{ color: 'var(--text)' }}>This cannot be undone.</strong>
+        </ConfirmModal>
       )}
     </>
   );

@@ -69,6 +69,8 @@ export interface IpcChannels {
   'settings:update-topic': (setting: TopicSetting) => void;
   'settings:get-difficulties': () => DifficultySettings;
   'settings:update-difficulties': (settings: DifficultySettings) => void;
+  'settings:get-intervals': () => RatingIntervals;
+  'settings:update-intervals': (intervals: RatingIntervals) => void;
 
   // Shell
   'shell:open-url': (url: string) => void;
@@ -94,6 +96,10 @@ export interface DifficultySettings {
   medium: boolean;
   hard: boolean;
 }
+
+// Configured days-until-next-review keyed by rating (1–5). The canonical
+// default values and the date math live in src/main/scheduler.ts.
+export type RatingIntervals = Record<number, number>;
 
 // History
 export interface ReviewHistoryEntry {

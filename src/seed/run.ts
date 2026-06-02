@@ -7,7 +7,8 @@ import os from 'os';
 import Database from 'better-sqlite3';
 import { initSchema } from '../db/schema';
 import { upsertProblem } from '../db/problems';
-import { ensureTopicSetting } from '../db/settings';
+import { ensureTopicSetting, ensureTopicSettingsForAllProblems, ensureRatingIntervals } from '../db/settings';
+import { DEFAULT_RATING_INTERVALS } from '../main/scheduler';
 import { NEETCODE_150 } from './neetcode150';
 import { DESIGN_QUESTIONS } from './design';
 
@@ -61,9 +62,14 @@ function main(): void {
       upsertProblem(db, problem);
     }
 
+    // Curated per-day counts first (Graphs 3, Tries 1, DP 0, …)…
     for (const [topic, perDay] of Object.entries(DEFAULT_TOPIC_SETTINGS)) {
       ensureTopicSetting(db, topic, perDay);
     }
+    // …then auto-register any remaining topics introduced by the problem lists.
+    ensureTopicSettingsForAllProblems(db);
+
+    ensureRatingIntervals(db, DEFAULT_RATING_INTERVALS);
   });
 
   seedTx();

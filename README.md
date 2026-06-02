@@ -1,9 +1,35 @@
-# Interview Repetition
+# Cadence
 
 A desktop app for retaining LeetCode and coding interview problems through spaced repetition.
 Runs entirely locally — no accounts, no cloud sync.
 
+Built with **Electron + React + SQLite** (`better-sqlite3`).
+
+## Contents
+
+- [Getting started](#getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Installation](#installation)
+  - [Seeding the database](#seeding-the-database)
+  - [Running in development](#running-in-development)
+  - [Building for production](#building-for-production)
+  - [Tests](#tests)
+- [Architecture](#architecture)
+  - [The three processes](#the-three-processes)
+  - [Where everything lives](#where-everything-lives)
+- [The database](#the-database)
+  - [Tables](#tables)
+  - [How they connect](#how-they-connect)
+  - [ER diagram (Mermaid)](#er-diagram--mermaid)
+  - [ER diagram (DBML)](#er-diagram--dbml)
+- [How the daily queue is built](#how-the-daily-queue-is-built)
+- [How a review updates the schedule](#how-a-review-updates-the-schedule)
+- [Settings & adding problem lists](#settings--adding-problem-lists)
+- [Request lifecycle (quick reference)](#request-lifecycle-quick-reference)
+
 ---
+
+# Getting started
 
 ## Prerequisites
 
@@ -17,21 +43,17 @@ Runs entirely locally — no accounts, no cloud sync.
 
 `better-sqlite3` is a native Node module and must be compiled during `npm install`. The tools above satisfy that requirement.
 
----
-
 ## Installation
 
 ```bash
-git clone https://github.com/your-username/interview-repetition.git
-cd interview-repetition
+git clone https://github.com/your-username/cadence.git
+cd cadence
 npm install
 ```
 
 `npm install` automatically compiles the native SQLite binding. No extra steps are needed after that.
 
----
-
-## Seeding the Database
+## Seeding the database
 
 Before running the app for the first time, seed the problem lists:
 
@@ -46,19 +68,20 @@ This populates:
 
 The seed script is **idempotent** — safe to run multiple times with no duplicates added.
 
-**Database location:**
+**Database location** — the DB file `interview-repetition.db` lives in Electron's
+`userData` directory, **not** in the repo:
 
 | Platform | Path |
 |---|---|
-| macOS | `~/Library/Application Support/interview-repetition/interview-repetition.db` |
-| Linux | `~/.config/interview-repetition/interview-repetition.db` |
-| Windows | `%APPDATA%\interview-repetition\interview-repetition.db` |
+| macOS | `~/Library/Application Support/Cadence/interview-repetition.db` |
+| Linux | `~/.config/Cadence/interview-repetition.db` |
+| Windows | `%APPDATA%\Cadence\interview-repetition.db` |
 
-When running inside Electron (not CLI), the path is determined by `app.getPath('userData')`, which resolves to the same locations above.
+When running inside Electron, the path is determined by `app.getPath('userData')`. The
+CLI seed script recomputes the same path manually (there's no Electron `app` object in a
+plain Node run).
 
----
-
-## Running in Development
+## Running in development
 
 ```bash
 npm run dev
@@ -71,9 +94,7 @@ This starts two processes concurrently:
 
 Hot reload applies to the renderer. Changes to the main process or IPC handlers require restarting `npm run dev`.
 
----
-
-## Building for Production
+## Building for production
 
 ```bash
 npm run build
@@ -93,88 +114,504 @@ Output is placed in `release/`. Platform-specific artifacts:
 
 | Platform | Output |
 |---|---|
-| macOS | `release/mac/Interview Repetition.app` |
-| Linux | `release/Interview Repetition-x.y.z.AppImage` |
-| Windows | `release/Interview Repetition Setup x.y.z.exe` |
+| macOS | `release/mac-arm64/Cadence.app` |
+| Linux | `release/Cadence-x.y.z.AppImage` |
+| Windows | `release/Cadence Setup x.y.z.exe` |
+
+## Tests
+
+Uses Node's built-in test runner via `tsx` (no extra dependencies).
+
+```bash
+npm run typecheck   # tsc across the renderer/shared sources
+npm test            # pure-logic tests (scheduler interval math) — fast, no native deps
+npm run test:db     # eligibility/queue tests that hit SQLite
+```
+
+`npm test` covers [`src/main/scheduler.ts`](src/main/scheduler.ts) and runs instantly.
+
+`test:db` exercises `getEligibleProblems` against an in-memory SQLite DB
+([`src/db/problems.test.ts`](src/db/problems.test.ts)). Because `better-sqlite3` is a
+native module compiled for **Electron's** ABI, this script rebuilds it for plain Node,
+runs the tests, then rebuilds it back for Electron. (If a `test:db` run ever leaves the
+native module mismatched, `npm run seed` rebuilds it for Electron again.)
 
 ---
 
-## Project Structure
+# Architecture
+
+## The three processes
+
+Electron splits the app into isolated layers that can only talk through a typed
+message bridge (IPC). Data never flows directly from the UI to the database.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  RENDERER  (Chromium + React)            src/renderer, src/screens │
+│  - The UI. No Node, no SQLite access.    src/components            │
+│  - Calls window.api.queue.getToday() etc.                          │
+└───────────────────────────┬───────────────────────────────────────┘
+                            │  window.api.*  (typed)
+                            ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  PRELOAD  (bridge)                       src/main/preload.ts       │
+│  - contextBridge.exposeInMainWorld('api', …)                       │
+│  - Turns each api method into ipcRenderer.invoke('channel', …)     │
+└───────────────────────────┬───────────────────────────────────────┘
+                            │  ipcRenderer.invoke ↔ ipcMain.handle
+                            ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  MAIN  (Node.js)                         src/main, src/db          │
+│  - ipc.ts registers every handler.                                 │
+│  - generator.ts + scheduler.ts hold the business logic.            │
+│  - src/db/* runs the actual SQL against better-sqlite3.            │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+The renderer has **no** direct Node or SQLite access — everything goes through IPC:
+
+- [`src/main/preload.ts`](src/main/preload.ts) exposes a typed `window.api` via `contextBridge`.
+- [`src/main/ipc.ts`](src/main/ipc.ts) registers an `ipcMain.handle()` for every channel.
+- [`src/renderer/api.ts`](src/renderer/api.ts) re-imports the `Api` type from preload, so
+  the renderer sees every method and its signature automatically — **end-to-end type safety**.
+
+The full channel contract is also written out in [`src/types.ts`](src/types.ts) under `IpcChannels`.
+
+## Where everything lives
 
 ```
 src/
-  main/           # Electron main process
-    main.ts       # App bootstrap, BrowserWindow creation
-    preload.ts    # Context bridge — exposes typed `window.api` to the renderer
-    ipc.ts        # All IPC handlers (registers with ipcMain)
+  main/                 # Electron MAIN process (Node side)
+    main.ts             # App bootstrap, BrowserWindow, dev-vs-prod load
+    preload.ts          # contextBridge → typed window.api
+    ipc.ts              # ALL ipcMain.handle() handlers, grouped by domain
+    generator.ts        # Daily queue generation / refresh / "add more" logic
+    scheduler.ts        # Spaced-repetition algorithm (isolated, swappable)
+    csv.ts              # CSV (de)serialization for history import/export
 
-  db/             # SQLite layer
-    connection.ts # Opens and caches the DB connection, runs schema init
-    schema.ts     # CREATE TABLE statements
-    problems.ts   # Problem queries
-    reviews.ts    # Review insert/query
-    queues.ts     # Daily queue read/write
-    settings.ts   # Topic and difficulty settings
+  db/                   # SQLite data-access layer (one file per table-ish)
+    connection.ts       # Opens + caches the DB, sets pragmas, runs schema init
+    schema.ts           # CREATE TABLE statements (the source of truth)
+    problems.ts         # Problem queries incl. getEligibleProblems()
+    reviews.ts          # Review insert/query, history, reset, CSV import
+    queues.ts           # Daily queue + queue-item read/write
+    settings.ts         # Topic settings + difficulty settings
 
-  queue/
-    generator.ts  # Queue generation and refresh logic
+  renderer/             # Electron RENDERER process (browser side)
+    main.tsx            # React entry point (ReactDOM.render)
+    App.tsx             # Root component; in-memory screen routing (no router)
+    api.ts              # Re-exports window.api with the Api type
+    styles.css          # Global styles
 
-  scheduling/
-    scheduler.ts  # Spaced repetition algorithm (isolated, replaceable)
+  screens/              # One component per top-nav tab
+    QueueScreen.tsx     # "Today" — the daily queue grouped by topic
+    HistoryScreen.tsx   # Past reviews; CSV import/export; reset
+    ProblemsScreen.tsx  # Browse/search all problems; add to today
+    SettingsScreen.tsx  # Per-topic counts + global difficulty toggles
 
-  seed/
-    neetcode150.ts  # NeetCode 150 problem data
-    design.ts       # Design question data
-    run.ts          # Seed entry point (run via npm run seed)
+  components/           # Reusable UI pieces
+    QueueItem.tsx       # A single problem row in the queue
+    ReviewModal.tsx     # Rating (1–5) + notes capture
+    AddProblemModal.tsx # Create a brand-new problem
+    AddToQueueModal.tsx # Pick an existing problem into today's queue
+    ConfirmModal.tsx    # Generic confirm dialog
 
-  types/
-    index.ts      # Shared TypeScript interfaces
+  seed/                 # One-time data population (run via `npm run seed`)
+    neetcode150.ts      # 150 NeetCode problems as NewProblem[]
+    design.ts           # 25 system-design questions
+    run.ts              # Seed entry point — idempotent
 
-  renderer/
-    main.tsx      # React entry point
-    App.tsx       # Root component with screen routing
-    api.ts        # Re-exports window.api with correct types
-    styles.css    # Global styles
-
-  components/
-    QueueItem.tsx   # Single problem row in the queue
-    ReviewModal.tsx # Rating + notes modal
-
-  screens/
-    QueueScreen.tsx    # Today's queue, grouped by topic
-    SettingsScreen.tsx # Topic and difficulty settings
+  types.ts              # All shared TypeScript interfaces + IPC contract
 ```
 
 ---
 
-## Architecture Notes
+# The database
 
-### Electron IPC
+SQLite via [`better-sqlite3`](https://github.com/WiseLibs/better-sqlite3) (synchronous,
+in-process). The schema is defined in one place: [`src/db/schema.ts`](src/db/schema.ts),
+run by [`connection.ts`](src/db/connection.ts) with `CREATE TABLE IF NOT EXISTS`, so
+opening the DB is enough to guarantee the schema exists. Pragmas set on open:
+`journal_mode = WAL` and `foreign_keys = ON`.
 
-The renderer has no direct access to Node or SQLite. All data flows through IPC:
+There are **7 tables**, in two groups: **content** (what problems exist and what you've
+done) and **config** (your settings).
 
-- `src/main/preload.ts` — exposes a typed `window.api` object via `contextBridge`
-- `src/main/ipc.ts` — registers `ipcMain.handle()` handlers for every channel
-- `src/renderer/api.ts` — re-imports the `Api` type from preload for end-to-end type safety
+## Tables
 
-### SQLite Location
+### `problems` — the catalog
+Every coding problem you could study; one row each. Mostly read-only after seeding.
 
-The database file is stored in Electron's `userData` directory (see the table under Seeding above). In development and in the CLI seed script, the same path is computed manually using `os.homedir()` and the platform convention.
+| Column | Meaning |
+|---|---|
+| `id` | unique ID (auto-increment) |
+| `title` | e.g. "Two Sum" |
+| `topic` | e.g. "Arrays", "Graphs" — the grouping key |
+| `difficulty` | `Easy` / `Medium` / `Hard` (enforced by a CHECK) |
+| `leetcode_url` | link to the problem |
+| `list_name` | source list ("NeetCode 150", "Design", …) |
 
-### Scheduling Module
+`(title, leetcode_url)` is unique, so the same problem can't be added twice.
 
-`src/scheduling/scheduler.ts` is the only place where "when should this problem be reviewed next?" is decided. It exports:
+### `reviews` — your study log (append-only)
+Every time you grade a problem, **one new row is added**. Nothing is updated or deleted
+(except a full reset). If you've reviewed "Two Sum" three times there are three rows here,
+all pointing at the same problem — the **most recent** one drives scheduling.
 
-- `getNextReviewDate(rating, fromDate)` — returns an ISO date string
-- `todayIso()` — returns today's date as `YYYY-MM-DD`
+| Column | Meaning |
+|---|---|
+| `id` | unique ID |
+| `problem_id` | → `problems.id` (which problem) |
+| `rating` | how it went, 1–5 |
+| `notes` | free-text notes |
+| `reviewed_at` | the day you did it (`YYYY-MM-DD`) |
+| `next_review_at` | the day it becomes due again (computed from the rating) |
 
-To swap in FSRS or any other algorithm, replace only this file. No other module contains scheduling logic.
+### `daily_queues` — "a day that has a to-do list"
+A marker: one row per calendar day you've generated a queue for.
 
-### Adding a New Problem List
+| Column | Meaning |
+|---|---|
+| `id` | unique ID |
+| `queue_date` | the date, `YYYY-MM-DD` (UNIQUE — one queue per day) |
 
-1. Create `src/seed/mylist.ts` exporting `NewProblem[]` with `list_name: 'My List'`
-2. Import it in `src/seed/run.ts` and append to `allProblems`
-3. If the list introduces new topics, add them to `DEFAULT_TOPIC_SETTINGS`
-4. Run `npm run seed`
+### `daily_queue_items` — the problems on a given day's list
+What you actually see on the **Today** screen.
 
-No schema changes or refactoring required.
+| Column | Meaning |
+|---|---|
+| `id` | unique ID |
+| `queue_id` | → `daily_queues.id` (which day) |
+| `problem_id` | → `problems.id` (which problem) |
+| `status` | `pending` / `completed` / `skipped` |
+
+Finishing a problem flips its `status` to `completed` and inserts a `reviews` row.
+
+### `topic_settings` — per-topic preferences
+One row per topic, controlling how the daily queue is built.
+
+| Column | Meaning |
+|---|---|
+| `topic` | topic name (the primary key) |
+| `enabled` | 0/1 — include this topic in daily queues? |
+| `problems_per_day` | how many problems from this topic to pick each day |
+
+### `difficulty_settings` — one global toggle
+A **single row** (always `id = 1`) with three 0/1 flags: `easy`, `medium`, `hard`.
+It's a table only because SQLite has no simpler place for one set of toggles.
+Defaults: Easy off, Medium on, Hard on.
+
+### `rating_intervals` — user-configurable scheduling intervals
+Five rows (one per rating, 1–5) holding how many `days` until a problem is due again
+after you grade it. Edited on the Settings screen. The **default** values are *not*
+stored in the schema — they're seeded from `DEFAULT_RATING_INTERVALS` in
+[`src/main/scheduler.ts`](src/main/scheduler.ts), the single source of truth for
+scheduling (see [How a review updates the schedule](#how-a-review-updates-the-schedule)).
+
+| Column | Meaning |
+|---|---|
+| `rating` | 1–5 (primary key) |
+| `days` | days until due again for that rating (≥ 1) |
+
+## How they connect
+
+Three **real foreign-key links** (`REFERENCES` in the schema):
+
+1. **`reviews.problem_id` → `problems.id`** — a problem has many reviews (its history).
+2. **`daily_queue_items.problem_id` → `problems.id`** — a queue item is one problem.
+3. **`daily_queue_items.queue_id` → `daily_queues.id`** — items belong to one day.
+
+Two **soft links** (matched by value, *not* enforced):
+
+4. **`topic_settings.topic` ↔ `problems.topic`** — matched by the topic string. To keep
+   this soft link from silently orphaning problems, `ensureTopicSettingsForAllProblems`
+   auto-creates a `topic_settings` row (enabled, 2/day) for every topic found in
+   `problems` — on each app launch, during seeding, and whenever a problem is added.
+   So new topics are schedulable without any manual setup.
+5. **`difficulty_settings`** isn't linked to any row — it's a global filter the generator reads.
+6. **`rating_intervals`** isn't linked to any row either — it's pure config the scheduler
+   reads when computing a review's next due date.
+
+"Is a problem due?" comes from the **latest** review per problem, compared against
+today's date. "Latest" is determined consistently by the **highest `reviews.id`**
+(`MAX(reviews.id)`, or `ORDER BY id DESC LIMIT 1`) everywhere in the codebase —
+not by `reviewed_at`, because that's date-only and can't break ties between two
+reviews on the same day.
+
+## ER diagram — Mermaid
+
+Renders inline on GitHub, or paste into [mermaid.live](https://mermaid.live).
+
+```mermaid
+erDiagram
+    problems ||--o{ reviews : "has history"
+    problems ||--o{ daily_queue_items : "appears in"
+    daily_queues ||--o{ daily_queue_items : "contains"
+
+    problems {
+        integer id PK
+        text title
+        text topic
+        text difficulty "Easy|Medium|Hard"
+        text leetcode_url
+        text list_name
+    }
+    reviews {
+        integer id PK
+        integer problem_id FK
+        integer rating "1..5"
+        text notes
+        text reviewed_at "YYYY-MM-DD"
+        text next_review_at "YYYY-MM-DD"
+    }
+    daily_queues {
+        integer id PK
+        text queue_date "UNIQUE, YYYY-MM-DD"
+    }
+    daily_queue_items {
+        integer id PK
+        integer queue_id FK
+        integer problem_id FK
+        text status "pending|completed|skipped"
+    }
+    topic_settings {
+        text topic PK
+        integer enabled "0|1"
+        integer problems_per_day
+    }
+    difficulty_settings {
+        integer id PK "always 1"
+        integer easy "0|1"
+        integer medium "0|1"
+        integer hard "0|1"
+    }
+    rating_intervals {
+        integer rating PK "1..5"
+        integer days "days until due again, >= 1"
+    }
+```
+
+## ER diagram — DBML
+
+Paste into [dbdiagram.io](https://dbdiagram.io).
+
+```dbml
+Table problems {
+  id integer [pk, increment]
+  title text [not null]
+  topic text [not null]
+  difficulty text [not null, note: "Easy | Medium | Hard"]
+  leetcode_url text [not null]
+  list_name text [not null]
+  Indexes {
+    (title, leetcode_url) [unique]
+  }
+}
+
+Table reviews {
+  id integer [pk, increment]
+  problem_id integer [not null, ref: > problems.id]
+  rating integer [not null, note: "1..5"]
+  notes text [not null, default: '']
+  reviewed_at text [not null, note: "YYYY-MM-DD"]
+  next_review_at text [not null, note: "YYYY-MM-DD"]
+}
+
+Table daily_queues {
+  id integer [pk, increment]
+  queue_date text [not null, unique, note: "YYYY-MM-DD"]
+}
+
+Table daily_queue_items {
+  id integer [pk, increment]
+  queue_id integer [not null, ref: > daily_queues.id]
+  problem_id integer [not null, ref: > problems.id]
+  status text [not null, default: 'pending', note: "pending | completed | skipped"]
+}
+
+Table topic_settings {
+  topic text [pk]
+  enabled integer [not null, default: 1, note: "0 | 1"]
+  problems_per_day integer [not null, default: 2]
+}
+
+Table difficulty_settings {
+  id integer [pk, note: "always 1 (single-row table)"]
+  easy integer [not null, default: 0]
+  medium integer [not null, default: 1]
+  hard integer [not null, default: 1]
+}
+
+Table rating_intervals {
+  rating integer [pk, note: "1..5"]
+  days integer [not null, note: "days until due again, >= 1 (seeded from scheduler defaults)"]
+}
+```
+
+---
+
+# How the daily queue is built
+
+This is the heart of the app — *"what should I review today?"*. **All of it lives in
+[`src/main/generator.ts`](src/main/generator.ts)**, which leans on the SQL in
+[`src/db/problems.ts`](src/db/problems.ts) (`getEligibleProblems`) and the date math in
+[`src/main/scheduler.ts`](src/main/scheduler.ts).
+
+### Trigger
+
+Opening the **Today** tab calls `window.api.queue.getToday()` → channel `queue:get-today`
+→ `getOrGenerateQueue(db, today)`:
+
+- If a `daily_queues` row already exists for today, its items are returned as-is.
+- Otherwise a new queue is generated for today.
+
+(`queue:reset-today` deletes today's queue and regenerates; `queue:generate` tops up the existing one.)
+
+### Generation algorithm (`generateQueue`)
+
+1. Read all `topic_settings` and the global `difficulty_settings`.
+2. Build the **exclude set** = problems already reviewed today (`reviews.reviewed_at = today`)
+   ∪ problems already in today's queue. This guarantees no duplicates and no re-showing
+   something you just graded.
+3. For each topic where `enabled = 1` and `problems_per_day > 0`:
+   - Ask `getEligibleProblems(topic, today, enabledDifficulties, excludeIds)`.
+   - Take up to `problems_per_day` of them, insert each as a `daily_queue_items` row, and
+     add it to the exclude set so later topics can't reuse it.
+4. All inserts run inside a single `db.transaction(...)`.
+5. Return the items **grouped by topic** for the UI.
+
+### What makes a problem "eligible" (`getEligibleProblems`)
+
+A problem qualifies for a topic's slot when **all** hold:
+
+- `problems.topic` matches the topic, **and**
+- its `difficulty` is in the currently enabled set, **and**
+- it is **due** — it has no reviews yet, *or* its latest review's `next_review_at <= today`, **and**
+- it is not in the exclude set.
+
+Eligible rows are ordered by `RANDOM()`, so each generation is a fresh shuffle.
+
+> Implementation detail worth knowing: the "due" check joins each problem to its latest
+> review via `reviews.id IN (SELECT MAX(id) GROUP BY problem_id)`. The exclude filter uses
+> a `-1` sentinel instead of `NULL` to avoid the SQL `x NOT IN (NULL)` trap (which is
+> `UNKNOWN`, not `TRUE`, and would silently drop every row). See the comment in `getEligibleProblems`.
+
+### Refresh / add-more (same file)
+
+- `refreshQueueItem` — swap one queue item for another eligible problem in the same topic
+  (delete + insert in a transaction).
+- `addMoreForTopic` — append N more eligible problems for a topic; reports how many were
+  added and whether the topic is exhausted.
+
+---
+
+# How a review updates the schedule
+
+When you grade a problem in `ReviewModal` (rating 1–5 + notes):
+
+1. Renderer → `window.api.review.submit(payload)` → channel `review:submit`.
+2. The handler in [`ipc.ts`](src/main/ipc.ts) reads the configured intervals
+   (`getRatingIntervals(db)`) and calls
+   `getNextReviewDate(rating, today, intervals)` from [`scheduler.ts`](src/main/scheduler.ts).
+3. A new `reviews` row is inserted (`reviewed_at = today`, `next_review_at = computed`).
+4. The originating `daily_queue_items` row is marked `completed`.
+
+Because eligibility keys off the **latest** review, that single insert is what pushes the
+problem out of the due set until `next_review_at`. That's the entire spaced-repetition loop.
+
+### Scheduling logic — one source of truth: `scheduler.ts`
+
+**All** review-timing logic lives in [`src/main/scheduler.ts`](src/main/scheduler.ts), and
+two things are defined there and *nowhere else*:
+
+1. **`DEFAULT_RATING_INTERVALS`** — the canonical default rating → days mapping.
+2. **`getNextReviewDate(rating, fromDate, intervals)`** — the only function that computes a
+   next-review date.
+
+The mapping is also **user-configurable**: it's stored in the `rating_intervals` DB table
+and editable on the **Settings** screen. The split is deliberate —
+
+| Concern | Lives in | What it is |
+|---|---|---|
+| The default values + the date math | `src/main/scheduler.ts` | **logic** (one source of truth) |
+| The *currently configured* values | `rating_intervals` table | **data** |
+
+So the schema never hardcodes interval numbers. On startup (and during `npm run seed`),
+`ensureRatingIntervals(db, DEFAULT_RATING_INTERVALS)` does an `INSERT OR IGNORE` to fill any
+missing rows from the scheduler's defaults — which means it seeds a fresh DB but never
+clobbers values you've customized.
+
+Defaults:
+
+| Rating | Next review in |
+|---|---|
+| 1 | 1 day |
+| 2 | 2 days |
+| 3 | 3 days |
+| 4 | 5 days |
+| 5 | 7 days |
+
+The data flow when intervals are read or changed:
+
+```
+Settings screen ⇄ api.settings.getIntervals / updateIntervals
+   → channels settings:get-intervals / settings:update-intervals   (src/main/ipc.ts)
+   → getRatingIntervals / setRatingIntervals                       (src/db/settings.ts)
+   → rating_intervals table
+
+Review submit
+   → getRatingIntervals(db)            (load current config)
+   → getNextReviewDate(rating, today, intervals)   (src/main/scheduler.ts — the math)
+```
+
+To switch to **FSRS**, SM-2, or anything else, replace this one file — nothing else in the
+codebase contains scheduling logic. Note the current algorithm is *stateless* (fixed
+intervals per rating). A stateful algorithm like FSRS, which tracks per-problem memory state
+(ease/stability/difficulty), would additionally need a per-problem state table (e.g.
+`problem_state`) — that's the natural next step when FSRS lands, and intentionally **not**
+added yet, to keep a single source of truth for "when is this due?" today.
+
+---
+
+# Settings & adding problem lists
+
+- **Topic settings** (`topic_settings`): per-topic `enabled` flag and `problems_per_day`.
+  Edited on the Settings screen; consumed by the generator.
+- **Difficulty settings** (`difficulty_settings`): a single global row toggling
+  Easy/Medium/Hard. Defaults: Easy off, Medium on, Hard on.
+- **Review intervals** (`rating_intervals`): the days-until-due per rating, editable on the
+  Settings screen. Defaults are seeded from `DEFAULT_RATING_INTERVALS` in
+  [`src/main/scheduler.ts`](src/main/scheduler.ts) — see
+  [the scheduling section](#scheduling-logic--one-source-of-truth-schedulerts).
+- **Seeding** (`npm run seed`, [`src/seed/run.ts`](src/seed/run.ts)): idempotently upserts
+  the NeetCode 150 + design problems and ensures default topic settings and rating intervals,
+  writing to the same DB file the app uses.
+
+### Adding a new problem list
+
+1. Create `src/seed/mylist.ts` exporting `NewProblem[]` (set a distinct `list_name`).
+2. Import it in `src/seed/run.ts` and spread it into `allProblems`.
+3. Run `npm run seed`. No schema change needed.
+
+**New topics register themselves** — you don't have to touch anything else. Any topic
+present in `problems` automatically gets a `topic_settings` row (enabled, 2/day) via
+`ensureTopicSettingsForAllProblems`, which runs on every app launch and during seeding.
+Only edit `DEFAULT_TOPIC_SETTINGS` in `src/seed/run.ts` if you want a *non-default*
+per-day count or a topic disabled out of the box (e.g. Graphs 3/day, DP 0/day) — and
+those curated values are applied first, so they win over the generic default.
+
+---
+
+# Request lifecycle (quick reference)
+
+```
+User clicks "Today"
+  → QueueScreen calls api.queue.getToday()           (src/renderer → src/screens)
+  → preload maps it to ipcRenderer.invoke('queue:get-today')
+  → ipc.ts handler runs getOrGenerateQueue(db, todayIso())
+      → reads topic/difficulty settings        (src/db/settings.ts)
+      → finds due problems per topic            (src/db/problems.ts)
+      → inserts daily_queue_items in a txn      (src/db/queues.ts)
+  → returns QueueGroupedByTopic[] back up the same chain
+  → QueueScreen renders one section per topic
+```

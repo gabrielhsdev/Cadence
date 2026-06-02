@@ -16,9 +16,10 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
     "baseUrl": ".",
+    "ignoreDeprecations": "5.0",
     "paths": {
       "@/*": ["src/*"]
     }
   },
-  "include": ["src/renderer", "src/types", "src/components", "src/screens"]
+  "include": ["src/renderer", "src/types.ts", "src/components", "src/screens"]
 }

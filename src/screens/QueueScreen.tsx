@@ -4,18 +4,34 @@ import { api } from '../renderer/api';
 import QueueItem from '../components/QueueItem';
 import ReviewModal from '../components/ReviewModal';
 import AddToQueueModal from '../components/AddToQueueModal';
+import ConfirmModal from '../components/ConfirmModal';
+
+interface BusyState {
+  generating: boolean;
+  resetting: boolean;
+  addingTopic: string | null;
+  refreshingId: number | null;
+}
+
+const IDLE: BusyState = {
+  generating: false,
+  resetting: false,
+  addingTopic: null,
+  refreshingId: null,
+};
 
 export default function QueueScreen(): React.ReactElement {
   const [groups, setGroups] = useState<QueueGroupedByTopic[]>([]);
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
+  const [busy, setBusy] = useState<BusyState>(IDLE);
   const [reviewItem, setReviewItem] = useState<QueueItemWithProblem | null>(null);
-  const [refreshingId, setRefreshingId] = useState<number | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
-  const [resetting, setResetting] = useState(false);
-  const [addingTopic, setAddingTopic] = useState<string | null>(null);
   const [topicNotice, setTopicNotice] = useState<{ topic: string; text: string } | null>(null);
+
+  function setBusyField<K extends keyof BusyState>(key: K, value: BusyState[K]): void {
+    setBusy((prev) => ({ ...prev, [key]: value }));
+  }
 
   const today = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
@@ -40,10 +56,10 @@ export default function QueueScreen(): React.ReactElement {
   }, [load]);
 
   async function handleGenerate(): Promise<void> {
-    setGenerating(true);
+    setBusyField('generating', true);
     const data = await api.queue.generate();
     setGroups(data);
-    setGenerating(false);
+    setBusyField('generating', false);
   }
 
   async function handleOpen(item: QueueItemWithProblem): Promise<void> {
@@ -52,7 +68,7 @@ export default function QueueScreen(): React.ReactElement {
   }
 
   async function handleRefresh(item: QueueItemWithProblem): Promise<void> {
-    setRefreshingId(item.id);
+    setBusyField('refreshingId', item.id);
     const replacement = await api.queue.refreshItem(item.id, item.problem.topic);
     if (replacement) {
       setGroups((prev) =>
@@ -65,7 +81,7 @@ export default function QueueScreen(): React.ReactElement {
         })
       );
     }
-    setRefreshingId(null);
+    setBusyField('refreshingId', null);
   }
 
   async function handleSkip(item: QueueItemWithProblem): Promise<void> {
@@ -81,7 +97,7 @@ export default function QueueScreen(): React.ReactElement {
   }
 
   async function handleAddMoreForTopic(topic: string): Promise<void> {
-    setAddingTopic(topic);
+    setBusyField('addingTopic', topic);
     const result = await api.queue.addMoreForTopic(topic, 2);
     if (result.added > 0) {
       const data = await api.queue.getToday();
@@ -91,15 +107,15 @@ export default function QueueScreen(): React.ReactElement {
       setTopicNotice({ topic, text: 'No more eligible problems in this topic.' });
       setTimeout(() => setTopicNotice(null), 3000);
     }
-    setAddingTopic(null);
+    setBusyField('addingTopic', null);
   }
 
   async function handleResetToday(): Promise<void> {
-    setResetting(true);
+    setBusyField('resetting', true);
     const data = await api.queue.resetToday();
     setGroups(data);
     setConfirmReset(false);
-    setResetting(false);
+    setBusyField('resetting', false);
   }
 
   function handleProblemAddedToQueue(_problem: Problem): void {
@@ -160,8 +176,8 @@ export default function QueueScreen(): React.ReactElement {
         <div className="empty-state">
           <h3>No problems queued</h3>
           <p>Your enabled topics may have no eligible problems, or all due problems are filtered by difficulty settings.</p>
-          <button className="btn btn-primary" onClick={handleGenerate} disabled={generating}>
-            {generating ? 'Generating…' : 'Generate Queue'}
+          <button className="btn btn-primary" onClick={handleGenerate} disabled={busy.generating}>
+            {busy.generating ? 'Generating…' : 'Generate Queue'}
           </button>
         </div>
       ) : (
@@ -172,10 +188,10 @@ export default function QueueScreen(): React.ReactElement {
               <button
                 className="btn btn-sm"
                 onClick={() => handleAddMoreForTopic(group.topic)}
-                disabled={addingTopic === group.topic}
+                disabled={busy.addingTopic === group.topic}
                 style={{ textTransform: 'none', letterSpacing: 'normal', fontWeight: 500 }}
               >
-                {addingTopic === group.topic ? '…' : '+ More'}
+                {busy.addingTopic === group.topic ? '…' : '+ More'}
               </button>
             </div>
             {topicNotice?.topic === group.topic && (
@@ -191,7 +207,7 @@ export default function QueueScreen(): React.ReactElement {
                 onReview={() => setReviewItem(item)}
                 onRefresh={() => handleRefresh(item)}
                 onSkip={() => handleSkip(item)}
-                refreshing={refreshingId === item.id}
+                refreshing={busy.refreshingId === item.id}
               />
             ))}
           </div>
@@ -214,26 +230,17 @@ export default function QueueScreen(): React.ReactElement {
       )}
 
       {confirmReset && (
-        <div className="modal-overlay" onClick={() => setConfirmReset(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-title">Refresh today's queue?</div>
-            <div className="modal-subtitle" style={{ marginBottom: 20, lineHeight: 1.6 }}>
-              This clears all pending and skipped problems for today and regenerates the queue from your current settings.
-              <br />
-              <strong style={{ color: 'var(--text)' }}>Completed reviews are kept.</strong>
-            </div>
-            <div className="modal-actions">
-              <button className="btn" onClick={() => setConfirmReset(false)}>Cancel</button>
-              <button
-                className="btn btn-primary"
-                onClick={handleResetToday}
-                disabled={resetting}
-              >
-                {resetting ? 'Regenerating…' : 'Yes, refresh'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmModal
+          title="Refresh today's queue?"
+          confirmLabel={busy.resetting ? 'Regenerating…' : 'Yes, refresh'}
+          confirmDisabled={busy.resetting}
+          onConfirm={handleResetToday}
+          onClose={() => setConfirmReset(false)}
+        >
+          This clears all pending and skipped problems for today and regenerates the queue from your current settings.
+          <br />
+          <strong style={{ color: 'var(--text)' }}>Completed reviews are kept.</strong>
+        </ConfirmModal>
       )}
     </>
   );

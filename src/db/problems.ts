@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3';
 import { Difficulty, NewProblem, Problem } from '../types';
+import { ensureTopicSetting, DEFAULT_PROBLEMS_PER_DAY } from './settings';
 
 export function getAllProblems(db: Database.Database): Problem[] {
   return db.prepare('SELECT * FROM problems ORDER BY topic, title').all() as Problem[];
@@ -10,6 +11,13 @@ export function searchProblems(db: Database.Database, query: string): Problem[] 
   return db
     .prepare('SELECT * FROM problems WHERE title LIKE ? OR topic LIKE ? ORDER BY topic, title')
     .all(like, like) as Problem[];
+}
+
+export function getProblemListNames(db: Database.Database): { id: number; list_name: string }[] {
+  return db.prepare('SELECT id, list_name FROM problems').all() as {
+    id: number;
+    list_name: string;
+  }[];
 }
 
 export function getProblemById(db: Database.Database, id: number): Problem | undefined {
@@ -61,6 +69,8 @@ export function addProblem(db: Database.Database, problem: NewProblem): Problem 
     problem.leetcode_url,
     problem.list_name
   );
+  // Auto-register the topic so a brand-new topic is schedulable right away.
+  ensureTopicSetting(db, problem.topic, DEFAULT_PROBLEMS_PER_DAY);
   return getProblemById(db, result.lastInsertRowid as number) as Problem;
 }
 

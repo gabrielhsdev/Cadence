@@ -26,7 +26,7 @@ export function getLatestReviewForProblem(
   problemId: number
 ): Review | undefined {
   return db
-    .prepare('SELECT * FROM reviews WHERE problem_id = ? ORDER BY reviewed_at DESC LIMIT 1')
+    .prepare('SELECT * FROM reviews WHERE problem_id = ? ORDER BY id DESC LIMIT 1')
     .get(problemId) as Review | undefined;
 }
 

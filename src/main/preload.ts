@@ -7,6 +7,7 @@ import {
   NewProblem,
   TopicSetting,
   DifficultySettings,
+  RatingIntervals,
   ReviewHistoryEntry,
 } from '../types';
 
@@ -48,6 +49,10 @@ const api = {
       ipcRenderer.invoke('settings:get-difficulties'),
     updateDifficulties: (settings: DifficultySettings): Promise<void> =>
       ipcRenderer.invoke('settings:update-difficulties', settings),
+    getIntervals: (): Promise<RatingIntervals> =>
+      ipcRenderer.invoke('settings:get-intervals'),
+    updateIntervals: (intervals: RatingIntervals): Promise<void> =>
+      ipcRenderer.invoke('settings:update-intervals', intervals),
   },
   history: {
     getAll: (): Promise<ReviewHistoryEntry[]> =>

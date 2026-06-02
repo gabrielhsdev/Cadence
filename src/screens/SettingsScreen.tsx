@@ -1,17 +1,25 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { DifficultySettings, TopicSetting } from '../types';
+import { DifficultySettings, RatingIntervals, TopicSetting } from '../types';
 import { api } from '../renderer/api';
+
+const RATINGS = [1, 2, 3, 4, 5] as const;
 
 export default function SettingsScreen(): React.ReactElement {
   const [topics, setTopics] = useState<TopicSetting[]>([]);
   const [difficulties, setDifficulties] = useState<DifficultySettings>({ easy: false, medium: true, hard: true });
+  const [intervals, setIntervals] = useState<RatingIntervals>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
-    const [t, d] = await Promise.all([api.settings.getTopics(), api.settings.getDifficulties()]);
+    const [t, d, iv] = await Promise.all([
+      api.settings.getTopics(),
+      api.settings.getDifficulties(),
+      api.settings.getIntervals(),
+    ]);
     setTopics(t);
     setDifficulties(d);
+    setIntervals(iv);
     setLoading(false);
   }, []);
 
@@ -32,6 +40,13 @@ export default function SettingsScreen(): React.ReactElement {
     setDifficulties(updated);
     await api.settings.updateDifficulties(updated);
     setSaving(false);
+  }
+
+  async function handleIntervalChange(rating: number, days: number): Promise<void> {
+    const safeDays = Math.max(1, days);
+    const updated = { ...intervals, [rating]: safeDays };
+    setIntervals(updated);
+    await api.settings.updateIntervals(updated);
   }
 
   if (loading) return <div className="spinner">Loading settings…</div>;
@@ -65,6 +80,31 @@ export default function SettingsScreen(): React.ReactElement {
             })}
           </div>
         </div>
+      </div>
+
+      <div className="settings-section">
+        <div className="settings-section-title">Review Intervals</div>
+        <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 8 }}>
+          Days until a problem is due again, based on the rating you give it (1 = hardest, 5 = easiest).
+        </div>
+        {RATINGS.map((rating) => (
+          <div key={rating} className="settings-row">
+            <span className="settings-row-label">Rating {rating}</span>
+            <div className="settings-row-controls">
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-muted)' }}>
+                <input
+                  type="number"
+                  className="number-input"
+                  min={1}
+                  max={3650}
+                  value={intervals[rating] ?? ''}
+                  onChange={(e) => handleIntervalChange(rating, parseInt(e.target.value, 10) || 1)}
+                />
+                <span>days</span>
+              </label>
+            </div>
+          </div>
+        ))}
       </div>
 
       <div className="settings-section">

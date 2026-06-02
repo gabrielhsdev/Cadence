@@ -39,7 +39,7 @@ export function getQueueItems(db: Database.Database, queueId: number): QueueItem
       FROM daily_queue_items dqi
       JOIN problems p ON p.id = dqi.problem_id
       LEFT JOIN reviews r ON r.id = (
-        SELECT id FROM reviews WHERE problem_id = dqi.problem_id ORDER BY reviewed_at DESC LIMIT 1
+        SELECT id FROM reviews WHERE problem_id = dqi.problem_id ORDER BY id DESC LIMIT 1
       )
       WHERE dqi.queue_id = ?
       ORDER BY p.topic, p.title
@@ -91,7 +91,7 @@ export function getQueueItem(
       FROM daily_queue_items dqi
       JOIN problems p ON p.id = dqi.problem_id
       LEFT JOIN reviews r ON r.id = (
-        SELECT id FROM reviews WHERE problem_id = dqi.problem_id ORDER BY reviewed_at DESC LIMIT 1
+        SELECT id FROM reviews WHERE problem_id = dqi.problem_id ORDER BY id DESC LIMIT 1
       )
       WHERE dqi.id = ?
     `)

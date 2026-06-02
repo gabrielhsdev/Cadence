@@ -60,32 +60,22 @@ export default function AddToQueueModal({ onAdd, onClose }: Props): React.ReactE
 
         <div style={{ maxHeight: 320, overflowY: 'auto' }}>
           {results.length === 0 && query.trim() !== '' && (
-            <div style={{ color: 'var(--text-muted)', fontSize: 13, padding: '12px 0' }}>
+            <div className="search-hint" style={{ color: 'var(--text-muted)' }}>
               No problems found.
             </div>
           )}
           {results.length === 0 && query.trim() === '' && (
-            <div style={{ color: 'var(--text-dim)', fontSize: 13, padding: '12px 0' }}>
+            <div className="search-hint" style={{ color: 'var(--text-dim)' }}>
               Start typing to search…
             </div>
           )}
           {results.map((p) => (
-            <div
-              key={p.id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '9px 0',
-                borderBottom: '1px solid var(--border)',
-                gap: 12,
-              }}
-            >
+            <div key={p.id} className="search-result">
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <div className="search-result-title">
                   {p.title}
                 </div>
-                <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+                <div className="search-result-meta">
                   <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{p.topic}</span>
                   <span className={`difficulty-badge ${p.difficulty}`} style={{ fontSize: 11 }}>{p.difficulty}</span>
                   <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{p.list_name}</span>

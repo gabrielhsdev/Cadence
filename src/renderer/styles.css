@@ -342,6 +342,36 @@ html, body {
   justify-content: flex-end;
 }
 
+/* Add-to-queue search results */
+.search-hint {
+  font-size: 13px;
+  padding: 12px 0;
+}
+
+.search-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+}
+
+.search-result-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-result-meta {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
 /* Settings screen */
 .settings-section {
   margin-bottom: 32px;

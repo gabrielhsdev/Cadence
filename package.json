@@ -12,6 +12,8 @@
     "package": "npm run build && electron-builder",
     "seed": "npm rebuild better-sqlite3 && tsx src/seed/run.ts && electron-rebuild -f -w better-sqlite3",
     "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test src/main/scheduler.test.ts",
+    "test:db": "npm rebuild better-sqlite3 && node --import tsx --test src/db/problems.test.ts; ec=$?; electron-rebuild -f -w better-sqlite3; exit $ec",
     "postinstall": "electron-builder install-app-deps"
   },
   "keywords": [],
