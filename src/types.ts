@@ -48,37 +48,6 @@ export interface QueueGroupedByTopic {
   items: QueueItemWithProblem[];
 }
 
-// IPC channel types
-export interface IpcChannels {
-  // Queue
-  'queue:get-today': () => QueueGroupedByTopic[];
-  'queue:generate': () => QueueGroupedByTopic[];
-  'queue:refresh-item': (itemId: number, topic: string) => QueueItemWithProblem | null;
-  'queue:skip-item': (itemId: number) => void;
-
-  // Reviews
-  'review:submit': (payload: ReviewPayload) => void;
-
-  // Problems
-  'problems:get-all': () => Problem[];
-  'problems:search': (query: string) => Problem[];
-  'problems:add': (problem: NewProblem) => Problem;
-
-  // Settings
-  'settings:get-topics': () => TopicSetting[];
-  'settings:update-topic': (setting: TopicSetting) => void;
-  'settings:get-difficulties': () => DifficultySettings;
-  'settings:update-difficulties': (settings: DifficultySettings) => void;
-  'settings:get-intervals': () => RatingIntervals;
-  'settings:update-intervals': (intervals: RatingIntervals) => void;
-  'settings:get-lists': () => string[];
-  'settings:get-active-list': () => string;
-  'settings:set-active-list': (list: string) => void;
-
-  // Shell
-  'shell:open-url': (url: string) => void;
-}
-
 export interface ReviewPayload {
   queue_item_id: number;
   problem_id: number;

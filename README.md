@@ -175,7 +175,10 @@ The renderer has **no** direct Node or SQLite access — everything goes through
 - [`src/renderer/api.ts`](src/renderer/api.ts) re-imports the `Api` type from preload, so
   the renderer sees every method and its signature automatically — **end-to-end type safety**.
 
-The full channel contract is also written out in [`src/types.ts`](src/types.ts) under `IpcChannels`.
+The single source of truth for the channel contract is the `Api` type inferred from the
+`api` object in [`src/main/preload.ts`](src/main/preload.ts) — add a method there and the
+renderer sees it automatically. The payload/return shapes it uses (e.g. `ReviewPayload`,
+`QueueGroupedByTopic`) live in [`src/types.ts`](src/types.ts).
 
 ## Where everything lives
 
