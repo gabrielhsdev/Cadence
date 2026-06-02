@@ -1,0 +1,21 @@
+#!/bin/sh
+#
+# Pre-push gate: typecheck + fast unit tests must pass before code leaves the machine.
+# Runs `npm run verify` (typecheck across all tsconfig projects + the pure scheduler tests).
+#
+# Intentionally does NOT run `npm run test:db` — that rebuilds the native better-sqlite3
+# module (Node<->Electron ABI swap) and is too slow for a push gate. Run it manually
+# before a release: `npm run test:db`.
+#
+# Bypass in an emergency with: git push --no-verify
+
+echo "▶ pre-push: running typecheck + tests…"
+
+if ! npm run verify --silent; then
+  echo ""
+  echo "✗ pre-push blocked: typecheck or tests failed. Fix them, or bypass with 'git push --no-verify'."
+  exit 1
+fi
+
+echo "✓ pre-push checks passed."
+exit 0

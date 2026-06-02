@@ -11,9 +11,11 @@
     "build:icon": "bash scripts/gen-icon.sh",
     "package": "npm run build && electron-builder",
     "seed": "npm rebuild better-sqlite3 && tsx src/seed/run.ts && electron-rebuild -f -w better-sqlite3",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.main.json && tsc --noEmit -p tsconfig.test.json",
     "test": "node --import tsx --test src/main/scheduler.test.ts",
     "test:db": "npm rebuild better-sqlite3 && node --import tsx --test src/db/problems.test.ts; ec=$?; electron-rebuild -f -w better-sqlite3; exit $ec",
+    "verify": "npm run typecheck && npm test",
+    "prepare": "git config core.hooksPath .githooks || true",
     "postinstall": "electron-builder install-app-deps"
   },
   "keywords": [],
@@ -22,7 +24,7 @@
   "devDependencies": {
     "@electron/rebuild": "^4.0.4",
     "@types/better-sqlite3": "^7.6.12",
-    "@types/node": "^20.14.0",
+    "@types/node": "^20.19.41",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
