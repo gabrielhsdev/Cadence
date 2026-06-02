@@ -53,6 +53,12 @@ const api = {
       ipcRenderer.invoke('settings:get-intervals'),
     updateIntervals: (intervals: RatingIntervals): Promise<void> =>
       ipcRenderer.invoke('settings:update-intervals', intervals),
+    getLists: (): Promise<string[]> =>
+      ipcRenderer.invoke('settings:get-lists'),
+    getActiveList: (): Promise<string> =>
+      ipcRenderer.invoke('settings:get-active-list'),
+    setActiveList: (list: string): Promise<void> =>
+      ipcRenderer.invoke('settings:set-active-list', list),
   },
   history: {
     getAll: (): Promise<ReviewHistoryEntry[]> =>

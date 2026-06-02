@@ -8,18 +8,24 @@ export default function SettingsScreen(): React.ReactElement {
   const [topics, setTopics] = useState<TopicSetting[]>([]);
   const [difficulties, setDifficulties] = useState<DifficultySettings>({ easy: false, medium: true, hard: true });
   const [intervals, setIntervals] = useState<RatingIntervals>({});
+  const [lists, setLists] = useState<string[]>([]);
+  const [activeList, setActiveList] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
-    const [t, d, iv] = await Promise.all([
+    const [t, d, iv, ls, al] = await Promise.all([
       api.settings.getTopics(),
       api.settings.getDifficulties(),
       api.settings.getIntervals(),
+      api.settings.getLists(),
+      api.settings.getActiveList(),
     ]);
     setTopics(t);
     setDifficulties(d);
     setIntervals(iv);
+    setLists(ls);
+    setActiveList(al);
     setLoading(false);
   }, []);
 
@@ -49,6 +55,11 @@ export default function SettingsScreen(): React.ReactElement {
     await api.settings.updateIntervals(updated);
   }
 
+  async function handleActiveListChange(list: string): Promise<void> {
+    setActiveList(list);
+    await api.settings.setActiveList(list);
+  }
+
   if (loading) return <div className="spinner">Loading settings…</div>;
 
   return (
@@ -57,6 +68,32 @@ export default function SettingsScreen(): React.ReactElement {
         <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>Settings</div>
         <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>
           Configure which topics and difficulties appear in your daily queue.
+        </div>
+      </div>
+
+      <div className="settings-section">
+        <div className="settings-section-title">Problem List</div>
+        <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 8 }}>
+          Which list the daily queue draws from. Changes apply to your next day or when you
+          reset today — your current queue stays as is.
+        </div>
+        <div className="settings-row">
+          <span className="settings-row-label">Active list</span>
+          <div className="settings-row-controls">
+            <select
+              className="number-input"
+              style={{ width: 'auto', minWidth: 160 }}
+              value={activeList}
+              onChange={(e) => handleActiveListChange(e.target.value)}
+            >
+              <option value="">All Problems</option>
+              {lists.map((l) => (
+                <option key={l} value={l}>
+                  {l}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 

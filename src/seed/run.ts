@@ -10,6 +10,7 @@ import { upsertProblem } from '../db/problems';
 import { ensureTopicSetting, ensureTopicSettingsForAllProblems, ensureRatingIntervals } from '../db/settings';
 import { DEFAULT_RATING_INTERVALS } from '../main/scheduler';
 import { NEETCODE_150 } from './neetcode150';
+import { BLIND_75 } from './blind75';
 import { DESIGN_QUESTIONS } from './design';
 
 const DEFAULT_TOPIC_SETTINGS: Record<string, number> = {
@@ -55,7 +56,9 @@ function main(): void {
   db.pragma('foreign_keys = ON');
   initSchema(db);
 
-  const allProblems = [...NEETCODE_150, ...DESIGN_QUESTIONS];
+  // NEETCODE_150 first so problems are created with that as their origin list_name;
+  // BLIND_75 then adds the 'Blind 75' membership to the same (already-inserted) rows.
+  const allProblems = [...NEETCODE_150, ...DESIGN_QUESTIONS, ...BLIND_75];
 
   const seedTx = db.transaction(() => {
     for (const problem of allProblems) {

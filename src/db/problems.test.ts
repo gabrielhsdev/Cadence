@@ -71,3 +71,14 @@ test('eligibility uses the latest review by id, not by reviewed_at', () => {
   // On 06-05 the latest review (id-wise) says due 06-20 → not eligible.
   assert.equal(getEligibleProblems(db, 'Arrays', '2026-06-05', ['Medium'], []).length, 0);
 });
+
+test('active-list filter restricts the pool to members of that list', () => {
+  const db = freshDb();
+  addProblem(db, makeProblem({ list_name: 'Blind 75' }));
+  // Member of its list → included.
+  assert.equal(getEligibleProblems(db, 'Arrays', '2026-06-02', ['Medium'], [], 'Blind 75').length, 1);
+  // Not a member of a different list → excluded.
+  assert.equal(getEligibleProblems(db, 'Arrays', '2026-06-02', ['Medium'], [], 'NeetCode 150').length, 0);
+  // '' = All Problems → no list filter.
+  assert.equal(getEligibleProblems(db, 'Arrays', '2026-06-02', ['Medium'], [], '').length, 1);
+});

@@ -10,7 +10,7 @@ import {
   getQueueItemIds,
   removeQueueItem,
 } from '../db/queues';
-import { getDifficultySettings, getTopicSettings } from '../db/settings';
+import { getActiveList, getDifficultySettings, getTopicSettings } from '../db/settings';
 
 function getEnabledDifficulties(db: Database.Database): Difficulty[] {
   const diffSettings = getDifficultySettings(db);
@@ -32,6 +32,7 @@ export function getOrGenerateQueue(db: Database.Database, today: string): QueueG
 export function generateQueue(db: Database.Database, today: string): QueueGroupedByTopic[] {
   const topicSettings = getTopicSettings(db);
   const enabledDifficulties = getEnabledDifficulties(db);
+  const activeList = getActiveList(db);
 
   const reviewedToday = getProblemsReviewedToday(db, today);
 
@@ -53,7 +54,8 @@ export function generateQueue(db: Database.Database, today: string): QueueGroupe
         setting.topic,
         today,
         enabledDifficulties,
-        excludeIds
+        excludeIds,
+        activeList
       );
 
       const count = Math.min(setting.problems_per_day, eligible.length);
@@ -81,7 +83,14 @@ export function refreshQueueItem(
   const inQueue = getQueueItemIds(db, queueId);
   const excludeIds = [...new Set([...reviewedToday, ...inQueue])];
 
-  const eligible = getEligibleProblems(db, topic, today, enabledDifficulties, excludeIds);
+  const eligible = getEligibleProblems(
+    db,
+    topic,
+    today,
+    enabledDifficulties,
+    excludeIds,
+    getActiveList(db)
+  );
   if (eligible.length === 0) return null;
 
   const replacement = eligible[0];
@@ -110,7 +119,14 @@ export function addMoreForTopic(
   const inQueue = getQueueItemIds(db, queue.id);
   const excludeIds = [...new Set([...reviewedToday, ...inQueue])];
 
-  const eligible = getEligibleProblems(db, topic, today, enabledDifficulties, excludeIds);
+  const eligible = getEligibleProblems(
+    db,
+    topic,
+    today,
+    enabledDifficulties,
+    excludeIds,
+    getActiveList(db)
+  );
   const toAdd = Math.min(count, eligible.length);
 
   db.transaction(() => {

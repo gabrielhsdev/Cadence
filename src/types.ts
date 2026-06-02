@@ -71,6 +71,9 @@ export interface IpcChannels {
   'settings:update-difficulties': (settings: DifficultySettings) => void;
   'settings:get-intervals': () => RatingIntervals;
   'settings:update-intervals': (intervals: RatingIntervals) => void;
+  'settings:get-lists': () => string[];
+  'settings:get-active-list': () => string;
+  'settings:set-active-list': (list: string) => void;
 
   // Shell
   'shell:open-url': (url: string) => void;

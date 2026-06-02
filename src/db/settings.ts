@@ -103,3 +103,19 @@ export function ensureRatingIntervals(db: Database.Database, defaults: RatingInt
     }
   })();
 }
+
+// The active problem list the daily queue draws from. '' = All Problems.
+export function getActiveList(db: Database.Database): string {
+  const row = db
+    .prepare('SELECT active_list FROM list_settings WHERE id = 1')
+    .get() as { active_list: string } | undefined;
+  return row?.active_list ?? '';
+}
+
+export function setActiveList(db: Database.Database, list: string): void {
+  db.prepare(`
+    INSERT INTO list_settings (id, active_list)
+    VALUES (1, ?)
+    ON CONFLICT (id) DO UPDATE SET active_list = excluded.active_list
+  `).run(list);
+}

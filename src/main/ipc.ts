@@ -2,7 +2,14 @@ import { ipcMain, shell, dialog } from 'electron';
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import { getDb } from '../db/connection';
-import { getAllProblems, searchProblems, addProblem, getProblemListNames } from '../db/problems';
+import {
+  getAllProblems,
+  searchProblems,
+  addProblem,
+  getProblemListNames,
+  getAvailableLists,
+  backfillProblemLists,
+} from '../db/problems';
 import {
   insertReview,
   getReviewHistory,
@@ -30,6 +37,8 @@ import {
   setRatingIntervals,
   ensureRatingIntervals,
   ensureTopicSettingsForAllProblems,
+  getActiveList,
+  setActiveList,
 } from '../db/settings';
 import { getOrGenerateQueue, generateQueue, refreshQueueItem, addMoreForTopic } from './generator';
 import { getNextReviewDate, todayIso, DEFAULT_RATING_INTERVALS } from './scheduler';
@@ -128,6 +137,14 @@ function registerSettingsHandlers(db: Database.Database): void {
   ipcMain.handle('settings:update-intervals', async (_event, intervals: RatingIntervals) =>
     setRatingIntervals(db, intervals)
   );
+
+  ipcMain.handle('settings:get-lists', async () => getAvailableLists(db));
+
+  ipcMain.handle('settings:get-active-list', async () => getActiveList(db));
+
+  ipcMain.handle('settings:set-active-list', async (_event, list: string) =>
+    setActiveList(db, list)
+  );
 }
 
 function registerHistoryHandlers(db: Database.Database): void {
@@ -210,6 +227,8 @@ export function registerIpcHandlers(): void {
   ensureRatingIntervals(db, DEFAULT_RATING_INTERVALS);
   // Make sure every topic that has problems is schedulable (auto-registers new topics).
   ensureTopicSettingsForAllProblems(db);
+  // Backfill list membership from the legacy list_name column (idempotent).
+  backfillProblemLists(db);
 
   registerQueueHandlers(db);
   registerReviewHandlers(db);

@@ -234,7 +234,7 @@ run by [`connection.ts`](src/db/connection.ts) with `CREATE TABLE IF NOT EXISTS`
 opening the DB is enough to guarantee the schema exists. Pragmas set on open:
 `journal_mode = WAL` and `foreign_keys = ON`.
 
-There are **7 tables**, in two groups: **content** (what problems exist and what you've
+There are **9 tables**, in two groups: **content** (what problems exist and what you've
 done) and **config** (your settings).
 
 ## Tables
@@ -313,7 +313,47 @@ scheduling (see [How a review updates the schedule](#how-a-review-updates-the-sc
 | `rating` | 1–5 (primary key) |
 | `days` | days until due again for that rating (≥ 1) |
 
+### `problem_lists` — list membership (many-to-many)
+Which lists each problem belongs to. One row per `(problem_id, list_name)`, so a problem
+can be in several lists at once (e.g. NeetCode 75 ⊂ 150 ⊂ 250). This is what lets the
+overlapping curated lists coexist; the legacy `problems.list_name` column is kept only as
+the problem's "origin" for CSV export.
+
+| Column | Meaning |
+|---|---|
+| `problem_id` | → `problems.id` (part of PK) |
+| `list_name` | the list this problem belongs to (part of PK) |
+
+### `list_settings` — the active list
+A single row (`id = 1`) holding `active_list` — the list the daily queue draws from.
+`''` means **All Problems** (no filter). Edited via the dropdown on the Settings screen.
+
+| Column | Meaning |
+|---|---|
+| `id` | always 1 (single-row table) |
+| `active_list` | selected list name, or `''` for all |
+
 ## How they connect
+
+**Real foreign-key links** (`REFERENCES` in the schema):
+
+1. **`reviews.problem_id` → `problems.id`** — a problem has many reviews (its history).
+2. **`daily_queue_items.problem_id` → `problems.id`** — a queue item is one problem.
+3. **`daily_queue_items.queue_id` → `daily_queues.id`** — items belong to one day.
+4. **`problem_lists.problem_id` → `problems.id`** — a problem belongs to many lists.
+
+**Soft links** (matched by value, *not* enforced):
+
+5. **`topic_settings.topic` ↔ `problems.topic`** — matched by the topic string. To keep
+   this soft link from silently orphaning problems, `ensureTopicSettingsForAllProblems`
+   auto-creates a `topic_settings` row (enabled, 2/day) for every topic found in
+   `problems` — on each app launch, during seeding, and whenever a problem is added.
+   So new topics are schedulable without any manual setup.
+6. **`difficulty_settings`** isn't linked to any row — it's a global filter the generator reads.
+7. **`rating_intervals`** isn't linked to any row either — it's pure config the scheduler
+   reads when computing a review's next due date.
+8. **`list_settings.active_list` ↔ `problem_lists.list_name`** — matched by string; the
+   queue only considers problems whose `problem_lists` membership includes the active list.
 
 Three **real foreign-key links** (`REFERENCES` in the schema):
 
@@ -347,6 +387,7 @@ erDiagram
     problems ||--o{ reviews : "has history"
     problems ||--o{ daily_queue_items : "appears in"
     daily_queues ||--o{ daily_queue_items : "contains"
+    problems ||--o{ problem_lists : "belongs to lists"
 
     problems {
         integer id PK
@@ -388,6 +429,14 @@ erDiagram
     rating_intervals {
         integer rating PK "1..5"
         integer days "days until due again, >= 1"
+    }
+    problem_lists {
+        integer problem_id PK,FK
+        text list_name PK
+    }
+    list_settings {
+        integer id PK "always 1"
+        text active_list "'' = All Problems"
     }
 ```
 
@@ -446,6 +495,16 @@ Table rating_intervals {
   rating integer [pk, note: "1..5"]
   days integer [not null, note: "days until due again, >= 1 (seeded from scheduler defaults)"]
 }
+
+Table problem_lists {
+  problem_id integer [ref: > problems.id, note: "part of composite PK"]
+  list_name text [note: "part of composite PK"]
+}
+
+Table list_settings {
+  id integer [pk, note: "always 1 (single-row table)"]
+  active_list text [not null, default: '', note: "selected list, '' = All Problems"]
+}
 ```
 
 ---
@@ -469,7 +528,8 @@ Opening the **Today** tab calls `window.api.queue.getToday()` → channel `queue
 
 ### Generation algorithm (`generateQueue`)
 
-1. Read all `topic_settings` and the global `difficulty_settings`.
+1. Read all `topic_settings`, the global `difficulty_settings`, and the **active list**
+   (`list_settings.active_list`).
 2. Build the **exclude set** = problems already reviewed today (`reviews.reviewed_at = today`)
    ∪ problems already in today's queue. This guarantees no duplicates and no re-showing
    something you just graded.
@@ -487,9 +547,16 @@ A problem qualifies for a topic's slot when **all** hold:
 - `problems.topic` matches the topic, **and**
 - its `difficulty` is in the currently enabled set, **and**
 - it is **due** — it has no reviews yet, *or* its latest review's `next_review_at <= today`, **and**
-- it is not in the exclude set.
+- it is not in the exclude set, **and**
+- it belongs to the **active list** (`EXISTS` in `problem_lists`) — unless the active list
+  is `''` (All Problems), in which case no list filter is applied.
 
 Eligible rows are ordered by `RANDOM()`, so each generation is a fresh shuffle.
+
+> **Switching lists is deferred by design.** The active list is read only here, at
+> *generation* time. Today's queue is already persisted in `daily_queue_items`, and
+> `getOrGenerateQueue` returns it untouched — so changing the list in Settings affects only
+> your **next day** or a **reset-today**, never the queue you're currently working through.
 
 > Implementation detail worth knowing: the "due" check joins each problem to its latest
 > review via `reviews.id IN (SELECT MAX(id) GROUP BY problem_id)`. The exclude filter uses
@@ -583,6 +650,10 @@ added yet, to keep a single source of truth for "when is this due?" today.
   Settings screen. Defaults are seeded from `DEFAULT_RATING_INTERVALS` in
   [`src/main/scheduler.ts`](src/main/scheduler.ts) — see
   [the scheduling section](#scheduling-logic--one-source-of-truth-schedulerts).
+- **Active list** (`list_settings.active_list`): a dropdown on the Settings screen picking
+  which list the queue draws from (`''` = All Problems). Options come from the distinct
+  `problem_lists.list_name` values. Switching it is deferred — see the note under
+  [How the daily queue is built](#how-the-daily-queue-is-built).
 - **Seeding** (`npm run seed`, [`src/seed/run.ts`](src/seed/run.ts)): idempotently upserts
   the NeetCode 150 + design problems and ensures default topic settings and rating intervals,
   writing to the same DB file the app uses.
@@ -592,6 +663,13 @@ added yet, to keep a single source of truth for "when is this due?" today.
 1. Create `src/seed/mylist.ts` exporting `NewProblem[]` (set a distinct `list_name`).
 2. Import it in `src/seed/run.ts` and spread it into `allProblems`.
 3. Run `npm run seed`. No schema change needed.
+
+**Overlapping lists just work.** Membership lives in `problem_lists`, so the *same* problem
+(same `title` + `leetcode_url`) can appear in several list arrays — e.g. a "NeetCode 75"
+array that repeats entries already in "NeetCode 150". `upsertProblem` inserts the problem
+once but records a `problem_lists` row for **each** list it appears in. So to author 75/250,
+you just list the relevant problems under each `list_name`; the overlap is handled
+automatically. The new list then shows up in the Settings dropdown.
 
 **New topics register themselves** — you don't have to touch anything else. Any topic
 present in `problems` automatically gets a `topic_settings` row (enabled, 2/day) via
@@ -609,8 +687,8 @@ User clicks "Today"
   → QueueScreen calls api.queue.getToday()           (src/renderer → src/screens)
   → preload maps it to ipcRenderer.invoke('queue:get-today')
   → ipc.ts handler runs getOrGenerateQueue(db, todayIso())
-      → reads topic/difficulty settings        (src/db/settings.ts)
-      → finds due problems per topic            (src/db/problems.ts)
+      → reads topic/difficulty settings + active list   (src/db/settings.ts)
+      → finds due problems per topic, filtered by list   (src/db/problems.ts)
       → inserts daily_queue_items in a txn      (src/db/queues.ts)
   → returns QueueGroupedByTopic[] back up the same chain
   → QueueScreen renders one section per topic
