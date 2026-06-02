@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <!-- Indigo → violet gradient — Apple Shortcuts / Reminders palette -->
+    <linearGradient id="bg" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0%"   stop-color="#4338CA"/>
+      <stop offset="100%" stop-color="#6D28D9"/>
+    </linearGradient>
+
+    <!-- Soft inner shadow to give depth to the background -->
+    <radialGradient id="shine" cx="38%" cy="28%" r="62%">
+      <stop offset="0%"   stop-color="#ffffff" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- macOS-style rounded-square background (rx ≈ 22 % of 1024) -->
+  <rect width="1024" height="1024" rx="224" ry="224" fill="url(#bg)"/>
+  <rect width="1024" height="1024" rx="224" ry="224" fill="url(#shine)"/>
+
+  <!--
+    Two-arc cycle icon — represents spaced repetition.
+
+    Geometry (all angles in standard SVG y-down convention):
+      Centre  : (512, 512)
+      Radius  : 210 px
+      Arc span: 140 ° each  (positions 200 °→340 ° and 20 °→160 °)
+      Gap     :  40 ° at each arrowhead
+
+    Endpoints (cos/sin computed to 4 dp):
+      200 °  → (315, 440)    340 ° → (709, 440)
+       20 °  → (709, 584)    160 ° → (315, 584)
+
+    Arrowhead direction = clockwise tangent = (−sin θ, cos θ):
+      At 340 °: ( 0.342,  0.940)   →  lower-right
+      At 160 °: (−0.342, −0.940)   →  upper-left
+
+    stroke-linecap="butt" keeps arc ends flat so they merge
+    cleanly with the filled arrowhead triangles.
+  -->
+
+  <!-- Upper arc  200 ° → 340 ° (passes through 270 ° / top) -->
+  <path d="M 315 440 A 210 210 0 0 1 709 440"
+        fill="none" stroke="white" stroke-width="72" stroke-linecap="butt"/>
+
+  <!-- Lower arc   20 ° → 160 ° (passes through  90 ° / bottom) -->
+  <path d="M 709 584 A 210 210 0 0 1 315 584"
+        fill="none" stroke="white" stroke-width="72" stroke-linecap="butt"/>
+
+  <!--
+    Arrowhead 1 — tip at 340 ° end of upper arc (709, 440)
+    Direction of travel: (0.342, 0.940)
+    Base centre moved 75 px backward: (683, 370)
+    Half-width 42 px along perpendicular (−0.940, 0.342):
+      left  (683 − 39, 370 + 14) = (644, 384)
+      right (683 + 39, 370 − 14) = (722, 356)
+  -->
+  <polygon points="709,440 644,384 722,356" fill="white"/>
+
+  <!--
+    Arrowhead 2 — tip at 160 ° end of lower arc (315, 584)
+    Direction of travel: (−0.342, −0.940)
+    Base centre moved 75 px backward: (341, 655)
+    Half-width 42 px along perpendicular (0.940, −0.342):
+      left  (341 + 39, 655 − 14) = (380, 641)
+      right (341 − 39, 655 + 14) = (302, 669)
+  -->
+  <polygon points="315,584 380,641 302,669" fill="white"/>
+</svg>
