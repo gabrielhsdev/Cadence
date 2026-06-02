@@ -35,9 +35,21 @@ export default function AddProblemModal({ topics, lists, onAdd, onClose }: Props
     if (!form.list_name.trim()) { setFormError('List name is required.'); return; }
 
     setSaving(true);
-    const created = await api.problems.add(form);
-    onAdd(created);
-    onClose();
+    try {
+      const created = await api.problems.add(form);
+      onAdd(created);
+      onClose();
+    } catch (err) {
+      // Most likely a UNIQUE (title, leetcode_url) collision — surface it instead
+      // of leaving the modal stuck on "Saving…".
+      const message = String((err as Error)?.message ?? '');
+      setFormError(
+        /UNIQUE|constraint/i.test(message)
+          ? 'A problem with this title and LeetCode URL already exists.'
+          : 'Could not add problem. Please try again.'
+      );
+      setSaving(false);
+    }
   }
 
   return (
