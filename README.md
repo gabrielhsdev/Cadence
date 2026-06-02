@@ -131,7 +131,9 @@ npm test            # pure-logic tests (scheduler interval math) — fast, no na
 npm run test:db     # eligibility/queue tests that hit SQLite
 ```
 
-`npm test` covers [`src/main/scheduler.ts`](src/main/scheduler.ts) and runs instantly.
+`npm test` covers the pure-logic modules — [`src/main/scheduler.ts`](src/main/scheduler.ts)
+(interval math) and [`src/main/csv.ts`](src/main/csv.ts) (CSV (de)serialisation) — and runs
+instantly with no native dependencies.
 
 `test:db` exercises `getEligibleProblems` against an in-memory SQLite DB
 ([`src/db/problems.test.ts`](src/db/problems.test.ts)). Because `better-sqlite3` is a
