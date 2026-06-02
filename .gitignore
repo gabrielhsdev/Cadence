@@ -6,6 +6,9 @@ dist/
 build/
 out/
 
+# Packaged app artifacts (electron-builder)
+release/
+
 # Coverage
 coverage/
 
@@ -18,6 +21,14 @@ pnpm-debug.log*
 # Environment files
 .env
 .env.*
+
+# Editor
+.vscode/
+
+# Local SQLite DB (also lives in userData, never in-repo — kept as a safety net)
+*.db
+*.db-wal
+*.db-shm
 
 # OS
 .DS_Store
