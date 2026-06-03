@@ -236,7 +236,8 @@ src/
     design.ts           # 25 system-design questions
     run.ts              # Seed entry point — idempotent
 
-  types.ts              # All shared TypeScript interfaces + IPC contract
+  types.ts              # All shared TypeScript interfaces
+  dateUtils.ts          # Shared date helpers (toIso / todayIso / addDaysIso)
 ```
 
 ---
@@ -280,7 +281,7 @@ all pointing at the same problem — the **most recent** one drives scheduling.
 | `rating` | how it went, 1–5 |
 | `notes` | free-text notes |
 | `reviewed_at` | the day you did it (`YYYY-MM-DD`) |
-| `next_review_at` | the day it becomes due again (computed from the rating) |
+| `next_review_at` | the FSRS due date at the time of this review (historical record; the live due date lives in `problem_state.due`) |
 
 ### `daily_queues` — "a day that has a to-do list"
 A marker: one row per calendar day you've generated a queue for.
@@ -379,11 +380,11 @@ A single row (`id = 1`) holding `active_list` — the list the daily queue draws
 8. **`list_settings.active_list` ↔ `problem_lists.list_name`** — matched by string; the
    queue only considers problems whose `problem_lists` membership includes the active list.
 
-"Is a problem due?" comes from `reviews.next_review_at` (the latest review per problem,
-by **highest `reviews.id`** — not `reviewed_at`, which is date-only and can't break ties
-between two reviews on the same day). FSRS writes that date on every review, and mirrors it
-in `problem_state.due` (which drives the Forecast). The `rating_intervals` table is legacy
-and no longer read.
+"Is a problem due?" comes from **`problem_state.due`** — the single source of truth. A
+problem with no `problem_state` row has never been reviewed and is always due. Both the
+daily queue (`getEligibleProblems`) and the Forecast read this column. `reviews.next_review_at`
+is kept as a historical record (and for CSV export) but is no longer consulted for
+scheduling; the `rating_intervals` table is legacy and unused.
 
 ## ER diagram — Mermaid
 
@@ -577,7 +578,7 @@ A problem qualifies for a topic's slot when **all** hold:
 
 - `problems.topic` matches the topic, **and**
 - its `difficulty` is in the currently enabled set, **and**
-- it is **due** — it has no reviews yet, *or* its latest review's `next_review_at <= today`, **and**
+- it is **due** — it has no `problem_state` row (never reviewed), *or* `problem_state.due <= today`, **and**
 - it is not in the exclude set, **and**
 - it belongs to the **active list** (`EXISTS` in `problem_lists`) — unless the active list
   is `''` (All Problems), in which case no list filter is applied.
@@ -589,9 +590,9 @@ Eligible rows are ordered by `RANDOM()`, so each generation is a fresh shuffle.
 > `getOrGenerateQueue` returns it untouched — so changing the list in Settings affects only
 > your **next day** or a **reset-today**, never the queue you're currently working through.
 
-> Implementation detail worth knowing: the "due" check joins each problem to its latest
-> review via `reviews.id IN (SELECT MAX(id) GROUP BY problem_id)`. The exclude filter uses
-> a `-1` sentinel instead of `NULL` to avoid the SQL `x NOT IN (NULL)` trap (which is
+> Implementation detail worth knowing: the "due" check is a `LEFT JOIN problem_state ps`
+> with `ps.due IS NULL OR ps.due <= today` (NULL = never reviewed = due). The exclude filter
+> uses a `-1` sentinel instead of `NULL` to avoid the SQL `x NOT IN (NULL)` trap (which is
 > `UNKNOWN`, not `TRUE`, and would silently drop every row). See the comment in `getEligibleProblems`.
 
 ### Refresh / add-more (same file)
@@ -618,9 +619,8 @@ problem in `ReviewModal` (rating 1–5 + notes):
    upserted with the new stability/difficulty/due, and the `daily_queue_items` row is
    marked `completed`.
 
-Eligibility still keys off `reviews.next_review_at` (which equals the FSRS `due` on every
-submit), so that single transaction is what pushes the problem out of the due set until
-its next review. That's the entire spaced-repetition loop.
+Eligibility keys off `problem_state.due`, so upserting it is what pushes the problem out of
+the due set until its next review. That's the entire spaced-repetition loop.
 
 ### How FSRS schedules
 
@@ -662,11 +662,11 @@ The algorithm is **stateful**, so its memory lives in the `problem_state` table 
 math + parameters live in `scheduler.ts`. To switch to SM-2 or another algorithm, replace
 that one file — nothing else in the codebase computes scheduling.
 
-> **Transitional note:** databases created before the FSRS migration have
-> `reviews.next_review_at` values from the old fixed-interval algorithm until each problem
-> is reviewed once under FSRS. `ensureProblemStates` rebuilds `problem_state` from history
-> immediately (so the Forecast and the *next* interval are FSRS-correct), but the current
-> queue's due dates only fully converge as you re-review.
+> **Upgrading an existing database:** on first launch after the FSRS migration,
+> `ensureProblemStates` (in [`backfill.ts`](src/main/backfill.ts)) replays each problem's
+> review history through FSRS to populate `problem_state`. So pre-FSRS reviews get correct
+> FSRS state — and therefore correct due dates and Forecast — immediately, with no manual
+> step. CSV imports trigger the same backfill.
 
 ---
 
