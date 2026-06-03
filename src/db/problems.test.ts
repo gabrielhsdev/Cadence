@@ -4,7 +4,8 @@ import Database from 'better-sqlite3';
 import { initSchema } from './schema';
 import { addProblem, getEligibleProblems } from './problems';
 import { insertReview } from './reviews';
-import { NewProblem } from '../types';
+import { upsertProblemState } from './state';
+import { NewProblem, ProblemState } from '../types';
 
 function freshDb(): Database.Database {
   const db = new Database(':memory:');
@@ -22,6 +23,22 @@ function makeProblem(over: Partial<NewProblem> = {}): NewProblem {
     list_name: 'Test',
     ...over,
   };
+}
+
+// Set a problem's FSRS state directly so eligibility tests can pin a due date.
+function setDue(db: Database.Database, problemId: number, due: string): void {
+  const state: ProblemState = {
+    problem_id: problemId,
+    stability: 10,
+    difficulty: 5,
+    due,
+    last_reviewed_at: '2026-06-02',
+    scheduled_days: 7,
+    reps: 1,
+    lapses: 0,
+    state: 2,
+  };
+  upsertProblemState(db, state);
 }
 
 test('a never-reviewed problem is eligible', () => {
@@ -51,24 +68,24 @@ test('excludeIds removes a problem from the pool', () => {
   assert.equal(getEligibleProblems(db, 'Arrays', '2026-06-02', ['Medium'], [p.id]).length, 0);
 });
 
-test('a problem is not eligible until its next_review_at date arrives', () => {
+test('a problem is not eligible until its due date arrives', () => {
   const db = freshDb();
   const p = addProblem(db, makeProblem());
-  insertReview(db, p.id, 5, '', '2026-06-02', '2026-06-09');
+  setDue(db, p.id, '2026-06-09');
   assert.equal(getEligibleProblems(db, 'Arrays', '2026-06-05', ['Medium'], []).length, 0, 'before due');
   assert.equal(getEligibleProblems(db, 'Arrays', '2026-06-09', ['Medium'], []).length, 1, 'on due date');
   assert.equal(getEligibleProblems(db, 'Arrays', '2026-06-10', ['Medium'], []).length, 1, 'overdue');
 });
 
-// Guards fix #1: "latest review" must be decided by id, not by the date-only
-// reviewed_at, so two reviews on the same day resolve deterministically.
-test('eligibility uses the latest review by id, not by reviewed_at', () => {
+// Due-ness comes from problem_state.due, not from the reviews log. A stale
+// reviews row must not make a problem eligible if its FSRS state says otherwise.
+test('eligibility reads problem_state.due, not reviews.next_review_at', () => {
   const db = freshDb();
   const p = addProblem(db, makeProblem());
-  // Same day, two reviews. The LATER one (higher id) pushes the due date far out.
-  insertReview(db, p.id, 1, 'first', '2026-06-02', '2026-06-03');
-  insertReview(db, p.id, 5, 'second', '2026-06-02', '2026-06-20');
-  // On 06-05 the latest review (id-wise) says due 06-20 → not eligible.
+  // An old review row that (under the legacy scheduler) would say due 06-03…
+  insertReview(db, p.id, 1, '', '2026-06-02', '2026-06-03');
+  // …but the FSRS state says it's parked until 06-20.
+  setDue(db, p.id, '2026-06-20');
   assert.equal(getEligibleProblems(db, 'Arrays', '2026-06-05', ['Medium'], []).length, 0);
 });
 

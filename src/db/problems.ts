@@ -44,17 +44,15 @@ export function getEligibleProblems(
     ? 'AND EXISTS (SELECT 1 FROM problem_lists pl WHERE pl.problem_id = p.id AND pl.list_name = ?)'
     : '';
 
+  // "Due" is the single source of truth in problem_state.due. A problem with no
+  // problem_state row has never been reviewed → always due.
   const sql = `
     SELECT p.*
     FROM problems p
-    LEFT JOIN (
-      SELECT r.problem_id, r.next_review_at
-      FROM reviews r
-      WHERE r.id IN (SELECT MAX(id) FROM reviews GROUP BY problem_id)
-    ) latest ON p.id = latest.problem_id
+    LEFT JOIN problem_state ps ON ps.problem_id = p.id
     WHERE p.topic = ?
       AND p.difficulty IN (${diffPlaceholders})
-      AND (latest.next_review_at IS NULL OR latest.next_review_at <= ?)
+      AND (ps.due IS NULL OR ps.due <= ?)
       AND p.id NOT IN (${excludePlaceholders})
       ${listClause}
     ORDER BY RANDOM()
