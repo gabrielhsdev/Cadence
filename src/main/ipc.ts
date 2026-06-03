@@ -16,14 +16,9 @@ import {
   resetAllProgress,
   importReviews,
   getProblemsReviewedToday,
-  getReviewsForProblem,
 } from '../db/reviews';
-import {
-  getProblemState,
-  upsertProblemState,
-  getProblemIdsNeedingState,
-  getForecast,
-} from '../db/state';
+import { getProblemState, upsertProblemState, getForecast } from '../db/state';
+import { ensureProblemStates } from './backfill';
 import { rowsToCsv, csvToRows, CsvRow } from './csv';
 import {
   getQueueItems,
@@ -45,27 +40,11 @@ import {
   setActiveList,
 } from '../db/settings';
 import { getOrGenerateQueue, generateQueue, refreshQueueItem, addMoreForTopic } from './generator';
-import { applyRating, replayHistory, todayIso, addDaysIso } from './scheduler';
+import { applyRating, todayIso, addDaysIso } from './scheduler';
 import { NewProblem, ReviewPayload, TopicSetting, DifficultySettings, QueueGroupedByTopic } from '../types';
 
 // How far ahead the Forecast calendar projects.
 const FORECAST_HORIZON_DAYS = 90;
-
-// Backfill FSRS state for any problem that has reviews but no problem_state row
-// (pre-FSRS data or CSV-imported history), by replaying its review sequence.
-// Idempotent: only touches problems missing a state row.
-export function ensureProblemStates(db: Database.Database): void {
-  const ids = getProblemIdsNeedingState(db);
-  if (ids.length === 0) return;
-  const tx = db.transaction(() => {
-    for (const problemId of ids) {
-      const reviews = getReviewsForProblem(db, problemId);
-      const state = replayHistory(reviews);
-      if (state) upsertProblemState(db, { problem_id: problemId, ...state });
-    }
-  });
-  tx();
-}
 
 // Thin wrapper around ipcMain.handle that logs any thrown error in the MAIN
 // process (with the channel name) before it crosses IPC as a rejected promise.

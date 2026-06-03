@@ -13,7 +13,7 @@
     "seed": "npm rebuild better-sqlite3 && tsx src/seed/run.ts && electron-rebuild -f -w better-sqlite3",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.main.json && tsc --noEmit -p tsconfig.test.json",
     "test": "node --import tsx --test src/main/scheduler.test.ts src/main/csv.test.ts",
-    "test:db": "npm rebuild better-sqlite3 && node --import tsx --test src/db/problems.test.ts; ec=$?; electron-rebuild -f -w better-sqlite3; exit $ec",
+    "test:db": "npm rebuild better-sqlite3 && node --import tsx --test src/db/problems.test.ts src/db/state.test.ts; ec=$?; electron-rebuild -f -w better-sqlite3; exit $ec",
     "lint": "eslint .",
     "verify": "npm run lint && npm run typecheck && npm test",
     "prepare": "git config core.hooksPath .githooks || true",
