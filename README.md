@@ -126,9 +126,11 @@ Output is placed in `release/`. Platform-specific artifacts:
 Uses Node's built-in test runner via `tsx` (no extra dependencies).
 
 ```bash
+npm run lint        # ESLint (flat config) — React Hooks rules + TS lint checks
 npm run typecheck   # tsc across the renderer/shared sources
-npm test            # pure-logic tests (scheduler interval math) — fast, no native deps
+npm test            # pure-logic tests (scheduler + CSV) — fast, no native deps
 npm run test:db     # eligibility/queue tests that hit SQLite
+npm run verify      # lint + typecheck + test (the pre-push / CI gate)
 ```
 
 `npm test` covers the pure-logic modules — [`src/main/scheduler.ts`](src/main/scheduler.ts)

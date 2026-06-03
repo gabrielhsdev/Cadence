@@ -4,6 +4,7 @@
  */
 import path from 'path';
 import os from 'os';
+import fs from 'fs';
 import Database from 'better-sqlite3';
 import { initSchema } from '../db/schema';
 import { upsertProblem } from '../db/problems';
@@ -45,7 +46,6 @@ function main(): void {
     userDataPath = path.join(os.homedir(), '.config', appName);
   }
 
-  const fs = require('fs');
   fs.mkdirSync(userDataPath, { recursive: true });
 
   const dbPath = path.join(userDataPath, 'interview-repetition.db');
