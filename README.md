@@ -7,6 +7,9 @@ Runs entirely locally — no accounts, no cloud sync.
 
 Built with **Electron + React + SQLite** (`better-sqlite3`).
 
+> New to the codebase? Start with [CONTRIBUTING.md](CONTRIBUTING.md) — a 5-minute
+> orientation map. This README is the deep reference.
+
 ## Contents
 
 - [Getting started](#getting-started)
