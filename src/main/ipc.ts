@@ -47,12 +47,47 @@ import { NewProblem, ReviewPayload, TopicSetting, DifficultySettings, QueueGroup
 // How far ahead the Forecast calendar projects.
 const FORECAST_HORIZON_DAYS = 90;
 
-// Thin wrapper around ipcMain.handle that logs any thrown error in the MAIN
-// process (with the channel name) before it crosses IPC as a rejected promise.
-// Without this, a DB/file error surfaces only as an unhandled rejection in the
+// ── IPC contract ─────────────────────────────────────────────────────────────
+// Channel is the CANONICAL list of every IPC channel. It is enforced two ways:
+//   • main side — handle() below only accepts a Channel, so a typo or a handler
+//     for an unknown channel is a compile error.
+//   • renderer side — src/main/preload.ts exposes exactly one api.* method per
+//     channel; its inferred `Api` type is what the renderer sees.
+// Invariant: every channel here has exactly one handle() in this file AND one
+// api.* method in preload.ts. When adding a channel, update all three.
+type Channel =
+  | 'queue:get-today'
+  | 'queue:generate'
+  | 'queue:reset-today'
+  | 'queue:refresh-item'
+  | 'queue:skip-item'
+  | 'queue:add-more-for-topic'
+  | 'queue:add-problem'
+  | 'review:submit'
+  | 'problems:get-all'
+  | 'problems:search'
+  | 'problems:add'
+  | 'settings:get-topics'
+  | 'settings:update-topic'
+  | 'settings:get-difficulties'
+  | 'settings:update-difficulties'
+  | 'settings:get-lists'
+  | 'settings:get-active-list'
+  | 'settings:set-active-list'
+  | 'forecast:get'
+  | 'history:get-all'
+  | 'history:reset'
+  | 'history:export'
+  | 'history:import'
+  | 'shell:open-url';
+
+// Thin wrapper around ipcMain.handle that (1) restricts the channel to the
+// canonical Channel union and (2) logs any thrown error in the MAIN process
+// (with the channel name) before it crosses IPC as a rejected promise. Without
+// the logging, a DB/file error surfaces only as an unhandled rejection in the
 // renderer with no main-side trace — making failures effectively invisible.
 function handle<Args extends unknown[], Result>(
-  channel: string,
+  channel: Channel,
   listener: (event: IpcMainInvokeEvent, ...args: Args) => Promise<Result> | Result
 ): void {
   ipcMain.handle(channel, async (event, ...args) => {

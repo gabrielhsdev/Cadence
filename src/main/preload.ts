@@ -78,4 +78,9 @@ const api = {
 
 contextBridge.exposeInMainWorld('api', api);
 
+// `Api` is the renderer-facing source of truth for the IPC surface: src/renderer
+// uses it (via src/renderer/api.ts) so every method and signature is type-checked
+// end-to-end. CONTRACT: each method here calls ipcRenderer.invoke(channel) for a
+// channel that must have a matching handle(channel) in src/main/ipc.ts, where the
+// canonical `Channel` union lives. Add a channel? Update both files.
 export type Api = typeof api;
