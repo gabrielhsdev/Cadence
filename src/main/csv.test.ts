@@ -39,6 +39,23 @@ test('escapes and parses fields containing double-quotes', () => {
   assert.equal(csvToRows(csv)[0].notes, 'the "two pointer" trick');
 });
 
+test('round-trips a field containing an embedded newline', () => {
+  const row = makeRow({ notes: 'step 1: brute force\nstep 2: hash map' });
+  const parsed = csvToRows(rowsToCsv([row]));
+  assert.equal(parsed.length, 1, 'newline inside a quoted field must not split the record');
+  assert.equal(parsed[0].notes, 'step 1: brute force\nstep 2: hash map');
+});
+
+test('keeps later rows intact after a multi-line field', () => {
+  const a = makeRow({ problem_title: 'A', notes: 'line1\nline2' });
+  const b = makeRow({ problem_title: 'B', notes: 'plain' });
+  const parsed = csvToRows(rowsToCsv([a, b]));
+  assert.equal(parsed.length, 2);
+  assert.equal(parsed[0].notes, 'line1\nline2');
+  assert.equal(parsed[1].problem_title, 'B');
+  assert.equal(parsed[1].notes, 'plain');
+});
+
 test('parses plain unquoted fields', () => {
   const header = CSV_HEADERS.join(',');
   const line = 'Two Sum,Arrays,Easy,https://x,NeetCode 150,5,ok,2026-06-02,2026-06-09';

@@ -37,54 +37,60 @@ export function rowsToCsv(rows: CsvRow[]): string {
 
 // ── parse ──────────────────────────────────────────────────────────────────
 
-function parseCsvLine(line: string): string[] {
-  const fields: string[] = [];
-  let i = 0;
+// Tokenise the whole document in a single pass so quoted fields may span line
+// breaks (a note like "line1\nline2" round-trips correctly). Splitting on '\n'
+// first — as the previous version did — tore such fields across records.
+function parseRecords(csv: string): string[][] {
+  const s = csv.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const records: string[][] = [];
+  let record: string[] = [];
+  let field = '';
+  let inQuotes = false;
 
-  while (i < line.length) {
-    if (line[i] === '"') {
-      // Quoted field
-      let field = '';
-      i++; // skip opening quote
-      while (i < line.length) {
-        if (line[i] === '"') {
-          if (line[i + 1] === '"') {
-            // Escaped quote
-            field += '"';
-            i += 2;
-          } else {
-            i++; // skip closing quote
-            break;
-          }
-        } else {
-          field += line[i];
+  const endField = (): void => {
+    record.push(field);
+    field = '';
+  };
+  const endRecord = (): void => {
+    endField();
+    records.push(record);
+    record = [];
+  };
+
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (s[i + 1] === '"') {
+          field += '"'; // escaped quote
           i++;
+        } else {
+          inQuotes = false; // closing quote
         }
+      } else {
+        field += ch; // any char incl. newline is part of the field
       }
-      fields.push(field);
-      if (line[i] === ',') i++; // skip comma
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ',') {
+      endField();
+    } else if (ch === '\n') {
+      endRecord();
     } else {
-      // Unquoted field — read until comma
-      const end = line.indexOf(',', i);
-      if (end === -1) {
-        fields.push(line.slice(i));
-        break;
-      }
-      fields.push(line.slice(i, end));
-      i = end + 1;
+      field += ch;
     }
   }
+  // Flush the final field/record if the file didn't end on a newline.
+  if (field.length > 0 || record.length > 0) endRecord();
 
-  return fields;
+  return records;
 }
 
 export function csvToRows(csv: string): CsvRow[] {
-  // Normalise line endings
-  const lines = csv.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
-  if (lines.length < 2) return [];
+  const records = parseRecords(csv);
+  if (records.length === 0) return [];
 
-  const headerLine = lines[0].trim();
-  const headers = parseCsvLine(headerLine);
+  const headers = records[0].map((h) => h.trim());
 
   // Validate all expected columns are present
   for (const expected of CSV_HEADERS) {
@@ -94,10 +100,10 @@ export function csvToRows(csv: string): CsvRow[] {
   }
 
   const rows: CsvRow[] = [];
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
-    const values = parseCsvLine(line);
+  for (let i = 1; i < records.length; i++) {
+    const values = records[i];
+    // Skip blank records (e.g. a trailing newline produced an empty line)
+    if (values.length === 1 && values[0].trim() === '') continue;
     const row = {} as CsvRow;
     for (const h of CSV_HEADERS) {
       const idx = headers.indexOf(h);
