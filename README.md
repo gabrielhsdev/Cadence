@@ -1,5 +1,7 @@
 # Cadence
 
+[![verify](https://github.com/gabrielhsdev/Cadence/actions/workflows/verify.yml/badge.svg)](https://github.com/gabrielhsdev/Cadence/actions/workflows/verify.yml)
+
 A desktop app for retaining LeetCode and coding interview problems through spaced repetition.
 Runs entirely locally — no accounts, no cloud sync.
 
