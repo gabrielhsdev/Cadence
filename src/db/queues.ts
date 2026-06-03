@@ -1,18 +1,14 @@
 import Database from 'better-sqlite3';
 import { DailyQueue, DailyQueueItem, QueueItemWithProblem, ReviewStatus } from '../types';
 
-// Shared SELECT for a queue item joined to its problem and latest review.
+// Shared SELECT for a queue item joined to its problem.
 // Callers append their own WHERE clause (by queue_id or by item id).
 const QUEUE_ITEM_SELECT = `
   SELECT
     dqi.id, dqi.queue_id, dqi.problem_id, dqi.status,
-    p.title, p.topic, p.difficulty, p.leetcode_url, p.list_name,
-    r.id as review_id, r.rating, r.notes, r.reviewed_at, r.next_review_at
+    p.title, p.topic, p.difficulty, p.leetcode_url, p.list_name
   FROM daily_queue_items dqi
   JOIN problems p ON p.id = dqi.problem_id
-  LEFT JOIN reviews r ON r.id = (
-    SELECT id FROM reviews WHERE problem_id = dqi.problem_id ORDER BY id DESC LIMIT 1
-  )
 `;
 
 export function getQueueForDate(db: Database.Database, date: string): DailyQueue | undefined {
@@ -104,15 +100,5 @@ function mapRow(row: Record<string, unknown>): QueueItemWithProblem {
       leetcode_url: row.leetcode_url as string,
       list_name: row.list_name as string,
     },
-    last_review: row.review_id
-      ? {
-          id: row.review_id as number,
-          problem_id: row.problem_id as number,
-          rating: row.rating as number,
-          notes: row.notes as string,
-          reviewed_at: row.reviewed_at as string,
-          next_review_at: row.next_review_at as string,
-        }
-      : undefined,
   };
 }

@@ -40,7 +40,6 @@ export interface TopicSetting {
 // Enriched types for UI
 export interface QueueItemWithProblem extends DailyQueueItem {
   problem: Problem;
-  last_review?: Review;
 }
 
 export interface QueueGroupedByTopic {
