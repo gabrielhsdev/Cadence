@@ -1,4 +1,4 @@
-import { ipcMain, shell, dialog } from 'electron';
+import { ipcMain, shell, dialog, IpcMainInvokeEvent } from 'electron';
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import { getDb } from '../db/connection';
@@ -44,41 +44,59 @@ import { getOrGenerateQueue, generateQueue, refreshQueueItem, addMoreForTopic } 
 import { getNextReviewDate, todayIso, DEFAULT_RATING_INTERVALS } from './scheduler';
 import { NewProblem, ReviewPayload, TopicSetting, DifficultySettings, RatingIntervals, QueueGroupedByTopic } from '../types';
 
+// Thin wrapper around ipcMain.handle that logs any thrown error in the MAIN
+// process (with the channel name) before it crosses IPC as a rejected promise.
+// Without this, a DB/file error surfaces only as an unhandled rejection in the
+// renderer with no main-side trace — making failures effectively invisible.
+function handle<Args extends unknown[], Result>(
+  channel: string,
+  listener: (event: IpcMainInvokeEvent, ...args: Args) => Promise<Result> | Result
+): void {
+  ipcMain.handle(channel, async (event, ...args) => {
+    try {
+      return await listener(event, ...(args as Args));
+    } catch (err) {
+      console.error(`[ipc] ${channel} failed:`, err);
+      throw err;
+    }
+  });
+}
+
 function registerQueueHandlers(db: Database.Database): void {
-  ipcMain.handle('queue:get-today', async (): Promise<QueueGroupedByTopic[]> => {
+  handle('queue:get-today', async (): Promise<QueueGroupedByTopic[]> => {
     const today = todayIso();
     return getOrGenerateQueue(db, today);
   });
 
-  ipcMain.handle('queue:generate', async (): Promise<QueueGroupedByTopic[]> => {
+  handle('queue:generate', async (): Promise<QueueGroupedByTopic[]> => {
     const today = todayIso();
     return generateQueue(db, today);
   });
 
-  ipcMain.handle('queue:reset-today', async (): Promise<QueueGroupedByTopic[]> => {
+  handle('queue:reset-today', async (): Promise<QueueGroupedByTopic[]> => {
     const today = todayIso();
     deleteQueueForDate(db, today);
     return generateQueue(db, today);
   });
 
-  ipcMain.handle('queue:refresh-item', async (_event, itemId: number, topic: string) => {
+  handle('queue:refresh-item', async (_event, itemId: number, topic: string) => {
     const today = todayIso();
     const item = getQueueItem(db, itemId);
     if (!item) return null;
     return refreshQueueItem(db, itemId, topic, item.queue_id, today);
   });
 
-  ipcMain.handle('queue:skip-item', async (_event, itemId: number) => {
+  handle('queue:skip-item', async (_event, itemId: number) => {
     updateQueueItemStatus(db, itemId, 'skipped');
   });
 
-  ipcMain.handle('queue:add-more-for-topic', async (_event, topic: string, count: number) => {
+  handle('queue:add-more-for-topic', async (_event, topic: string, count: number) => {
     const today = todayIso();
     return addMoreForTopic(db, topic, count, today);
   });
 
   // Manually add a specific problem to today's queue
-  ipcMain.handle('queue:add-problem', async (_event, problemId: number) => {
+  handle('queue:add-problem', async (_event, problemId: number) => {
     const today = todayIso();
     let queue = getQueueForDate(db, today);
     if (!queue) queue = createQueue(db, today);
@@ -98,7 +116,7 @@ function registerQueueHandlers(db: Database.Database): void {
 }
 
 function registerReviewHandlers(db: Database.Database): void {
-  ipcMain.handle('review:submit', async (_event, payload: ReviewPayload) => {
+  handle('review:submit', async (_event, payload: ReviewPayload) => {
     const today = todayIso();
     const intervals = getRatingIntervals(db);
     const nextReview = getNextReviewDate(payload.rating, today, intervals);
@@ -108,52 +126,52 @@ function registerReviewHandlers(db: Database.Database): void {
 }
 
 function registerProblemsHandlers(db: Database.Database): void {
-  ipcMain.handle('problems:get-all', async () => getAllProblems(db));
+  handle('problems:get-all', async () => getAllProblems(db));
 
-  ipcMain.handle('problems:search', async (_event, query: string) =>
+  handle('problems:search', async (_event, query: string) =>
     searchProblems(db, query)
   );
 
-  ipcMain.handle('problems:add', async (_event, problem: NewProblem) =>
+  handle('problems:add', async (_event, problem: NewProblem) =>
     addProblem(db, problem)
   );
 }
 
 function registerSettingsHandlers(db: Database.Database): void {
-  ipcMain.handle('settings:get-topics', async () => getTopicSettings(db));
+  handle('settings:get-topics', async () => getTopicSettings(db));
 
-  ipcMain.handle('settings:update-topic', async (_event, setting: TopicSetting) =>
+  handle('settings:update-topic', async (_event, setting: TopicSetting) =>
     upsertTopicSetting(db, setting)
   );
 
-  ipcMain.handle('settings:get-difficulties', async () => getDifficultySettings(db));
+  handle('settings:get-difficulties', async () => getDifficultySettings(db));
 
-  ipcMain.handle('settings:update-difficulties', async (_event, settings: DifficultySettings) =>
+  handle('settings:update-difficulties', async (_event, settings: DifficultySettings) =>
     updateDifficultySettings(db, settings)
   );
 
-  ipcMain.handle('settings:get-intervals', async () => getRatingIntervals(db));
+  handle('settings:get-intervals', async () => getRatingIntervals(db));
 
-  ipcMain.handle('settings:update-intervals', async (_event, intervals: RatingIntervals) =>
+  handle('settings:update-intervals', async (_event, intervals: RatingIntervals) =>
     setRatingIntervals(db, intervals)
   );
 
-  ipcMain.handle('settings:get-lists', async () => getAvailableLists(db));
+  handle('settings:get-lists', async () => getAvailableLists(db));
 
-  ipcMain.handle('settings:get-active-list', async () => getActiveList(db));
+  handle('settings:get-active-list', async () => getActiveList(db));
 
-  ipcMain.handle('settings:set-active-list', async (_event, list: string) =>
+  handle('settings:set-active-list', async (_event, list: string) =>
     setActiveList(db, list)
   );
 }
 
 function registerHistoryHandlers(db: Database.Database): void {
-  ipcMain.handle('history:get-all', async () => getReviewHistory(db));
+  handle('history:get-all', async () => getReviewHistory(db));
 
-  ipcMain.handle('history:reset', async () => resetAllProgress(db));
+  handle('history:reset', async () => resetAllProgress(db));
 
   // CSV export
-  ipcMain.handle('history:export', async () => {
+  handle('history:export', async () => {
     const { filePath, canceled } = await dialog.showSaveDialog({
       title: 'Export Review History',
       defaultPath: `interview-repetition-${new Date().toISOString().split('T')[0]}.csv`,
@@ -187,7 +205,7 @@ function registerHistoryHandlers(db: Database.Database): void {
   });
 
   // CSV import
-  ipcMain.handle('history:import', async () => {
+  handle('history:import', async () => {
     const { filePaths, canceled } = await dialog.showOpenDialog({
       title: 'Import Review History',
       filters: [{ name: 'CSV', extensions: ['csv'] }],
@@ -237,7 +255,7 @@ export function registerIpcHandlers(): void {
   registerHistoryHandlers(db);
 
   // Shell
-  ipcMain.handle('shell:open-url', async (_event, url: string) => {
+  handle('shell:open-url', async (_event, url: string) => {
     await shell.openExternal(url);
   });
 }
