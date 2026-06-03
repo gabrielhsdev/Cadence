@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyRating, replayHistory, addDaysIso, RATING_TO_GRADE } from './scheduler';
+import { applyRating, replayHistory, RATING_TO_GRADE } from './scheduler';
 
 const TODAY = '2026-06-02';
 
@@ -65,10 +65,4 @@ test('throws on a rating with no grade mapping', () => {
 
 test('RATING_TO_GRADE covers all five ratings', () => {
   assert.deepEqual(Object.keys(RATING_TO_GRADE).sort(), ['1', '2', '3', '4', '5']);
-});
-
-test('addDaysIso does whole-day arithmetic across month boundaries', () => {
-  assert.equal(addDaysIso('2026-06-02', 3), '2026-06-05');
-  assert.equal(addDaysIso('2026-06-28', 7), '2026-07-05');
-  assert.equal(addDaysIso('2026-12-29', 7), '2027-01-05');
 });

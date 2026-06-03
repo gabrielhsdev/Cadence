@@ -40,7 +40,8 @@ import {
   setActiveList,
 } from '../db/settings';
 import { getOrGenerateQueue, generateQueue, refreshQueueItem, addMoreForTopic } from './generator';
-import { applyRating, todayIso, addDaysIso } from './scheduler';
+import { applyRating } from './scheduler';
+import { todayIso, addDaysIso } from '../dateUtils';
 import { NewProblem, ReviewPayload, TopicSetting, DifficultySettings, QueueGroupedByTopic } from '../types';
 
 // How far ahead the Forecast calendar projects.

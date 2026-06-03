@@ -1,17 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ReviewForecast } from '../types';
 import { api } from '../renderer/api';
+import { toIso } from '../dateUtils';
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const HORIZON_DAYS = 90;
 const ACCENT_RGB = '94, 155, 255';
-
-function toIso(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
 
 interface Cell {
   iso: string;

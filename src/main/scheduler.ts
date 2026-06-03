@@ -106,22 +106,3 @@ export function replayHistory(
   for (const r of reviews) state = applyRating(state, r.rating, r.reviewed_at);
   return state;
 }
-
-// Today's calendar date in the user's LOCAL timezone as YYYY-MM-DD.
-// (Not toISOString(), which is UTC and would roll "today" over at the wrong
-// local hour for anyone not on UTC.)
-export function todayIso(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-// Add `days` to a YYYY-MM-DD date, returning YYYY-MM-DD (used for the forecast
-// horizon). Whole-day UTC arithmetic, matching the date-only model.
-export function addDaysIso(iso: string, days: number): string {
-  const d = parseDay(iso);
-  d.setUTCDate(d.getUTCDate() + days);
-  return formatDay(d);
-}
