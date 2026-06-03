@@ -74,5 +74,21 @@ export function initSchema(db: Database.Database): void {
     );
 
     INSERT OR IGNORE INTO list_settings (id, active_list) VALUES (1, '');
+
+    -- FSRS per-problem memory state (one row per problem, created on first
+    -- review). Mirrors a ts-fsrs Card flattened to columns; the scheduler in
+    -- src/main/scheduler.ts reads/writes it. A problem with NO row here has
+    -- never been reviewed (a "new" card). Dates are YYYY-MM-DD.
+    CREATE TABLE IF NOT EXISTS problem_state (
+      problem_id       INTEGER PRIMARY KEY REFERENCES problems(id),
+      stability        REAL    NOT NULL,
+      difficulty       REAL    NOT NULL,
+      due              TEXT    NOT NULL,
+      last_reviewed_at TEXT    NOT NULL,
+      scheduled_days   INTEGER NOT NULL DEFAULT 0,
+      reps             INTEGER NOT NULL DEFAULT 0,
+      lapses           INTEGER NOT NULL DEFAULT 0,
+      state            INTEGER NOT NULL DEFAULT 0
+    );
   `);
 }

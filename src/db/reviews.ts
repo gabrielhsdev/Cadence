@@ -30,6 +30,14 @@ export function getLatestReviewForProblem(
     .get(problemId) as Review | undefined;
 }
 
+// All reviews for one problem in chronological (id) order — used to replay an
+// FSRS state when backfilling problem_state for pre-existing history.
+export function getReviewsForProblem(db: Database.Database, problemId: number): Review[] {
+  return db
+    .prepare('SELECT * FROM reviews WHERE problem_id = ? ORDER BY id')
+    .all(problemId) as Review[];
+}
+
 export function getProblemsReviewedToday(db: Database.Database, today: string): number[] {
   const rows = db
     .prepare('SELECT DISTINCT problem_id FROM reviews WHERE reviewed_at = ?')

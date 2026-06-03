@@ -73,6 +73,31 @@ export interface DifficultySettings {
 // default values and the date math live in src/main/scheduler.ts.
 export type RatingIntervals = Record<number, number>;
 
+// FSRS per-problem memory state. `SchedulerState` is the algorithm's view
+// (no DB key); `ProblemState` is the persisted row in the problem_state table.
+// Mirrors a ts-fsrs Card, flattened to plain columns. Dates are YYYY-MM-DD.
+export interface SchedulerState {
+  stability: number;
+  difficulty: number;
+  due: string;
+  last_reviewed_at: string;
+  scheduled_days: number;
+  reps: number;
+  lapses: number;
+  state: number; // ts-fsrs State: 0 New, 1 Learning, 2 Review, 3 Relearning
+}
+
+export interface ProblemState extends SchedulerState {
+  problem_id: number;
+}
+
+// Upcoming-review forecast for the Forecast calendar.
+export interface ReviewForecast {
+  overdue: number; // scheduled before today and not yet reviewed
+  newCount: number; // problems never reviewed (no state yet)
+  upcoming: { date: string; count: number }[]; // due on each day from today forward
+}
+
 // History
 export interface ReviewHistoryEntry {
   review_id: number;
