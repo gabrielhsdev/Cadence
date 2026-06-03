@@ -16,7 +16,14 @@ import {
   resetAllProgress,
   importReviews,
   getProblemsReviewedToday,
+  getReviewsForProblem,
 } from '../db/reviews';
+import {
+  getProblemState,
+  upsertProblemState,
+  getProblemIdsNeedingState,
+  getForecast,
+} from '../db/state';
 import { rowsToCsv, csvToRows, CsvRow } from './csv';
 import {
   getQueueItems,
@@ -33,16 +40,32 @@ import {
   upsertTopicSetting,
   getDifficultySettings,
   updateDifficultySettings,
-  getRatingIntervals,
-  setRatingIntervals,
-  ensureRatingIntervals,
   ensureTopicSettingsForAllProblems,
   getActiveList,
   setActiveList,
 } from '../db/settings';
 import { getOrGenerateQueue, generateQueue, refreshQueueItem, addMoreForTopic } from './generator';
-import { getNextReviewDate, todayIso, DEFAULT_RATING_INTERVALS } from './scheduler';
-import { NewProblem, ReviewPayload, TopicSetting, DifficultySettings, RatingIntervals, QueueGroupedByTopic } from '../types';
+import { applyRating, replayHistory, todayIso, addDaysIso } from './scheduler';
+import { NewProblem, ReviewPayload, TopicSetting, DifficultySettings, QueueGroupedByTopic } from '../types';
+
+// How far ahead the Forecast calendar projects.
+const FORECAST_HORIZON_DAYS = 90;
+
+// Backfill FSRS state for any problem that has reviews but no problem_state row
+// (pre-FSRS data or CSV-imported history), by replaying its review sequence.
+// Idempotent: only touches problems missing a state row.
+export function ensureProblemStates(db: Database.Database): void {
+  const ids = getProblemIdsNeedingState(db);
+  if (ids.length === 0) return;
+  const tx = db.transaction(() => {
+    for (const problemId of ids) {
+      const reviews = getReviewsForProblem(db, problemId);
+      const state = replayHistory(reviews);
+      if (state) upsertProblemState(db, { problem_id: problemId, ...state });
+    }
+  });
+  tx();
+}
 
 // Thin wrapper around ipcMain.handle that logs any thrown error in the MAIN
 // process (with the channel name) before it crosses IPC as a rejected promise.
@@ -118,10 +141,15 @@ function registerQueueHandlers(db: Database.Database): void {
 function registerReviewHandlers(db: Database.Database): void {
   handle('review:submit', async (_event, payload: ReviewPayload) => {
     const today = todayIso();
-    const intervals = getRatingIntervals(db);
-    const nextReview = getNextReviewDate(payload.rating, today, intervals);
-    insertReview(db, payload.problem_id, payload.rating, payload.notes, today, nextReview);
-    updateQueueItemStatus(db, payload.queue_item_id, 'completed');
+    // Advance the FSRS state from the problem's prior state (null = never
+    // reviewed), then persist the review and the new state together.
+    const prev = getProblemState(db, payload.problem_id) ?? null;
+    const next = applyRating(prev, payload.rating, today);
+    db.transaction(() => {
+      insertReview(db, payload.problem_id, payload.rating, payload.notes, today, next.due);
+      upsertProblemState(db, { problem_id: payload.problem_id, ...next });
+      updateQueueItemStatus(db, payload.queue_item_id, 'completed');
+    })();
   });
 }
 
@@ -148,12 +176,6 @@ function registerSettingsHandlers(db: Database.Database): void {
 
   handle('settings:update-difficulties', async (_event, settings: DifficultySettings) =>
     updateDifficultySettings(db, settings)
-  );
-
-  handle('settings:get-intervals', async () => getRatingIntervals(db));
-
-  handle('settings:update-intervals', async (_event, intervals: RatingIntervals) =>
-    setRatingIntervals(db, intervals)
   );
 
   handle('settings:get-lists', async () => getAvailableLists(db));
@@ -234,25 +256,35 @@ function registerHistoryHandlers(db: Database.Database): void {
     }));
 
     const result = importReviews(db, mapped);
+    // Imported reviews need FSRS state rebuilt from their history.
+    ensureProblemStates(db);
     return { ok: true, ...result };
+  });
+}
+
+function registerForecastHandlers(db: Database.Database): void {
+  handle('forecast:get', async () => {
+    const today = todayIso();
+    return getForecast(db, today, addDaysIso(today, FORECAST_HORIZON_DAYS));
   });
 }
 
 export function registerIpcHandlers(): void {
   const db = getDb();
 
-  // Seed any missing rating-interval rows from the scheduler's defaults.
-  ensureRatingIntervals(db, DEFAULT_RATING_INTERVALS);
   // Make sure every topic that has problems is schedulable (auto-registers new topics).
   ensureTopicSettingsForAllProblems(db);
   // Backfill list membership from the legacy list_name column (idempotent).
   backfillProblemLists(db);
+  // Backfill FSRS state for any pre-existing / imported review history.
+  ensureProblemStates(db);
 
   registerQueueHandlers(db);
   registerReviewHandlers(db);
   registerProblemsHandlers(db);
   registerSettingsHandlers(db);
   registerHistoryHandlers(db);
+  registerForecastHandlers(db);
 
   // Shell
   handle('shell:open-url', async (_event, url: string) => {

@@ -50,10 +50,10 @@ export function initSchema(db: Database.Database): void {
     INSERT OR IGNORE INTO difficulty_settings (id, easy, medium, hard)
     VALUES (1, 0, 1, 1);
 
-    -- Configured days-until-next-review per rating. Rows are SEEDED FROM
-    -- DEFAULT_RATING_INTERVALS in src/main/scheduler.ts (the single source of
-    -- truth for scheduling) via ensureRatingIntervals() — never hardcode the
-    -- default values here.
+    -- LEGACY (unused since the FSRS migration). Scheduling now lives in
+    -- problem_state + src/main/scheduler.ts; this table is no longer read or
+    -- written. Kept (not dropped) to avoid a destructive schema change on
+    -- existing databases. Safe to remove in a future migration.
     CREATE TABLE IF NOT EXISTS rating_intervals (
       rating INTEGER PRIMARY KEY CHECK (rating BETWEEN 1 AND 5),
       days   INTEGER NOT NULL CHECK (days >= 1)

@@ -69,10 +69,6 @@ export interface DifficultySettings {
   hard: boolean;
 }
 
-// Configured days-until-next-review keyed by rating (1–5). The canonical
-// default values and the date math live in src/main/scheduler.ts.
-export type RatingIntervals = Record<number, number>;
-
 // FSRS per-problem memory state. `SchedulerState` is the algorithm's view
 // (no DB key); `ProblemState` is the persisted row in the problem_state table.
 // Mirrors a ts-fsrs Card, flattened to plain columns. Dates are YYYY-MM-DD.

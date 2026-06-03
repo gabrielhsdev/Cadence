@@ -1,29 +1,24 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { DifficultySettings, RatingIntervals, TopicSetting } from '../types';
+import { DifficultySettings, TopicSetting } from '../types';
 import { api } from '../renderer/api';
-
-const RATINGS = [1, 2, 3, 4, 5] as const;
 
 export default function SettingsScreen(): React.ReactElement {
   const [topics, setTopics] = useState<TopicSetting[]>([]);
   const [difficulties, setDifficulties] = useState<DifficultySettings>({ easy: false, medium: true, hard: true });
-  const [intervals, setIntervals] = useState<RatingIntervals>({});
   const [lists, setLists] = useState<string[]>([]);
   const [activeList, setActiveList] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
-    const [t, d, iv, ls, al] = await Promise.all([
+    const [t, d, ls, al] = await Promise.all([
       api.settings.getTopics(),
       api.settings.getDifficulties(),
-      api.settings.getIntervals(),
       api.settings.getLists(),
       api.settings.getActiveList(),
     ]);
     setTopics(t);
     setDifficulties(d);
-    setIntervals(iv);
     setLists(ls);
     setActiveList(al);
     setLoading(false);
@@ -46,13 +41,6 @@ export default function SettingsScreen(): React.ReactElement {
     setDifficulties(updated);
     await api.settings.updateDifficulties(updated);
     setSaving(false);
-  }
-
-  async function handleIntervalChange(rating: number, days: number): Promise<void> {
-    const safeDays = Math.max(1, days);
-    const updated = { ...intervals, [rating]: safeDays };
-    setIntervals(updated);
-    await api.settings.updateIntervals(updated);
   }
 
   async function handleActiveListChange(list: string): Promise<void> {
@@ -120,28 +108,13 @@ export default function SettingsScreen(): React.ReactElement {
       </div>
 
       <div className="settings-section">
-        <div className="settings-section-title">Review Intervals</div>
-        <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 8 }}>
-          Days until a problem is due again, based on the rating you give it (1 = hardest, 5 = easiest).
+        <div className="settings-section-title">Review Scheduling</div>
+        <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+          Review timing is handled automatically by <strong>FSRS</strong>, which learns
+          each problem&apos;s memory strength from your ratings and schedules the next review
+          for when you&apos;re about to forget it. The more confidently you rate a problem, the
+          longer until it returns. See the <strong>Forecast</strong> tab for what&apos;s coming up.
         </div>
-        {RATINGS.map((rating) => (
-          <div key={rating} className="settings-row">
-            <span className="settings-row-label">Rating {rating}</span>
-            <div className="settings-row-controls">
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-muted)' }}>
-                <input
-                  type="number"
-                  className="number-input"
-                  min={1}
-                  max={3650}
-                  value={intervals[rating] ?? ''}
-                  onChange={(e) => handleIntervalChange(rating, parseInt(e.target.value, 10) || 1)}
-                />
-                <span>days</span>
-              </label>
-            </div>
-          </div>
-        ))}
       </div>
 
       <div className="settings-section">

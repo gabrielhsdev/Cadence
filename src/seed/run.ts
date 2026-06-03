@@ -8,8 +8,7 @@ import fs from 'fs';
 import Database from 'better-sqlite3';
 import { initSchema } from '../db/schema';
 import { upsertProblem } from '../db/problems';
-import { ensureTopicSetting, ensureTopicSettingsForAllProblems, ensureRatingIntervals } from '../db/settings';
-import { DEFAULT_RATING_INTERVALS } from '../main/scheduler';
+import { ensureTopicSetting, ensureTopicSettingsForAllProblems } from '../db/settings';
 import { NEETCODE_150 } from './neetcode150';
 import { BLIND_75 } from './blind75';
 import { DESIGN_QUESTIONS } from './design';
@@ -71,8 +70,6 @@ function main(): void {
     }
     // …then auto-register any remaining topics introduced by the problem lists.
     ensureTopicSettingsForAllProblems(db);
-
-    ensureRatingIntervals(db, DEFAULT_RATING_INTERVALS);
   });
 
   seedTx();
