@@ -198,7 +198,8 @@ src/
     preload.ts          # contextBridge → typed window.api
     ipc.ts              # ALL ipcMain.handle() handlers, grouped by domain
     generator.ts        # Daily queue generation / refresh / "add more" logic
-    scheduler.ts        # Spaced-repetition algorithm (isolated, swappable)
+    scheduler.ts        # Spaced-repetition algorithm — FSRS, via ts-fsrs (isolated, swappable)
+    backfill.ts         # Rebuilds problem_state from review history (startup / CSV import)
     csv.ts              # CSV (de)serialization for history import/export
 
   db/                   # SQLite data-access layer (one file per table-ish)
@@ -208,6 +209,7 @@ src/
     reviews.ts          # Review insert/query, history, reset, CSV import
     queues.ts           # Daily queue + queue-item read/write
     settings.ts         # Topic settings + difficulty settings
+    state.ts            # FSRS per-problem state (problem_state) + due forecast
 
   renderer/             # Electron RENDERER process (browser side)
     main.tsx            # React entry point (ReactDOM.render)
@@ -217,6 +219,7 @@ src/
 
   screens/              # One component per top-nav tab
     QueueScreen.tsx     # "Today" — the daily queue grouped by topic
+    ForecastScreen.tsx  # Calendar heatmap of upcoming due problems (90 days)
     HistoryScreen.tsx   # Past reviews; CSV import/export; reset
     ProblemsScreen.tsx  # Browse/search all problems; add to today
     SettingsScreen.tsx  # Per-topic counts + global difficulty toggles
@@ -246,8 +249,8 @@ run by [`connection.ts`](src/db/connection.ts) with `CREATE TABLE IF NOT EXISTS`
 opening the DB is enough to guarantee the schema exists. Pragmas set on open:
 `journal_mode = WAL` and `foreign_keys = ON`.
 
-There are **9 tables**, in two groups: **content** (what problems exist and what you've
-done) and **config** (your settings).
+There are **10 tables**, in two groups: **content** (what problems exist, what you've
+done, and each problem's scheduling state) and **config** (your settings).
 
 ## Tables
 
@@ -299,6 +302,22 @@ What you actually see on the **Today** screen.
 
 Finishing a problem flips its `status` to `completed` and inserts a `reviews` row.
 
+### `problem_state` — FSRS memory state (one row per reviewed problem)
+The heart of scheduling. Created/updated on each review; a problem with **no** row
+here has never been reviewed (a "new" card). It's a flattened
+[`ts-fsrs`](https://github.com/open-spaced-repetition/ts-fsrs) `Card`.
+
+| Column | Meaning |
+|---|---|
+| `problem_id` | → `problems.id` (primary key) |
+| `stability` | days the memory is expected to last (grows as you succeed) |
+| `difficulty` | intrinsic hardness, 1–10 |
+| `due` | next review date, `YYYY-MM-DD` |
+| `last_reviewed_at` | date of the most recent review |
+| `scheduled_days` | the interval that produced `due` |
+| `reps` / `lapses` | successful reviews / times forgotten |
+| `state` | ts-fsrs state: 0 New, 1 Learning, 2 Review, 3 Relearning |
+
 ### `topic_settings` — per-topic preferences
 One row per topic, controlling how the daily queue is built.
 
@@ -313,17 +332,11 @@ A **single row** (always `id = 1`) with three 0/1 flags: `easy`, `medium`, `hard
 It's a table only because SQLite has no simpler place for one set of toggles.
 Defaults: Easy off, Medium on, Hard on.
 
-### `rating_intervals` — user-configurable scheduling intervals
-Five rows (one per rating, 1–5) holding how many `days` until a problem is due again
-after you grade it. Edited on the Settings screen. The **default** values are *not*
-stored in the schema — they're seeded from `DEFAULT_RATING_INTERVALS` in
-[`src/main/scheduler.ts`](src/main/scheduler.ts), the single source of truth for
-scheduling (see [How a review updates the schedule](#how-a-review-updates-the-schedule)).
-
-| Column | Meaning |
-|---|---|
-| `rating` | 1–5 (primary key) |
-| `days` | days until due again for that rating (≥ 1) |
+### `rating_intervals` — **LEGACY (unused)**
+Held the fixed days-until-due per rating used by the old fixed-interval scheduler.
+Since the FSRS migration, scheduling lives in `problem_state` and this table is no
+longer read or written. It's kept (not dropped) to avoid a destructive schema change
+on existing databases; safe to remove in a future migration.
 
 ### `problem_lists` — list membership (many-to-many)
 Which lists each problem belongs to. One row per `(problem_id, list_name)`, so a problem
@@ -350,28 +363,27 @@ A single row (`id = 1`) holding `active_list` — the list the daily queue draws
 **Real foreign-key links** (`REFERENCES` in the schema):
 
 1. **`reviews.problem_id` → `problems.id`** — a problem has many reviews (its history).
-2. **`daily_queue_items.problem_id` → `problems.id`** — a queue item is one problem.
-3. **`daily_queue_items.queue_id` → `daily_queues.id`** — items belong to one day.
-4. **`problem_lists.problem_id` → `problems.id`** — a problem belongs to many lists.
+2. **`problem_state.problem_id` → `problems.id`** — a problem has at most one FSRS state row.
+3. **`daily_queue_items.problem_id` → `problems.id`** — a queue item is one problem.
+4. **`daily_queue_items.queue_id` → `daily_queues.id`** — items belong to one day.
+5. **`problem_lists.problem_id` → `problems.id`** — a problem belongs to many lists.
 
 **Soft links** (matched by value, *not* enforced):
 
-5. **`topic_settings.topic` ↔ `problems.topic`** — matched by the topic string. To keep
+6. **`topic_settings.topic` ↔ `problems.topic`** — matched by the topic string. To keep
    this soft link from silently orphaning problems, `ensureTopicSettingsForAllProblems`
    auto-creates a `topic_settings` row (enabled, 2/day) for every topic found in
    `problems` — on each app launch, during seeding, and whenever a problem is added.
    So new topics are schedulable without any manual setup.
-6. **`difficulty_settings`** isn't linked to any row — it's a global filter the generator reads.
-7. **`rating_intervals`** isn't linked to any row either — it's pure config the scheduler
-   reads when computing a review's next due date.
+7. **`difficulty_settings`** isn't linked to any row — it's a global filter the generator reads.
 8. **`list_settings.active_list` ↔ `problem_lists.list_name`** — matched by string; the
    queue only considers problems whose `problem_lists` membership includes the active list.
 
-"Is a problem due?" comes from the **latest** review per problem, compared against
-today's date. "Latest" is determined consistently by the **highest `reviews.id`**
-(`MAX(reviews.id)`, or `ORDER BY id DESC LIMIT 1`) everywhere in the codebase —
-not by `reviewed_at`, because that's date-only and can't break ties between two
-reviews on the same day.
+"Is a problem due?" comes from `reviews.next_review_at` (the latest review per problem,
+by **highest `reviews.id`** — not `reviewed_at`, which is date-only and can't break ties
+between two reviews on the same day). FSRS writes that date on every review, and mirrors it
+in `problem_state.due` (which drives the Forecast). The `rating_intervals` table is legacy
+and no longer read.
 
 ## ER diagram — Mermaid
 
@@ -380,6 +392,7 @@ Renders inline on GitHub, or paste into [mermaid.live](https://mermaid.live).
 ```mermaid
 erDiagram
     problems ||--o{ reviews : "has history"
+    problems ||--o| problem_state : "scheduling state"
     problems ||--o{ daily_queue_items : "appears in"
     daily_queues ||--o{ daily_queue_items : "contains"
     problems ||--o{ problem_lists : "belongs to lists"
@@ -399,6 +412,17 @@ erDiagram
         text notes
         text reviewed_at "YYYY-MM-DD"
         text next_review_at "YYYY-MM-DD"
+    }
+    problem_state {
+        integer problem_id PK,FK
+        real stability
+        real difficulty
+        text due "YYYY-MM-DD"
+        text last_reviewed_at "YYYY-MM-DD"
+        integer scheduled_days
+        integer reps
+        integer lapses
+        integer state "0..3"
     }
     daily_queues {
         integer id PK
@@ -459,6 +483,18 @@ Table reviews {
   notes text [not null, default: '']
   reviewed_at text [not null, note: "YYYY-MM-DD"]
   next_review_at text [not null, note: "YYYY-MM-DD"]
+}
+
+Table problem_state {
+  problem_id integer [pk, ref: > problems.id]
+  stability real [not null]
+  difficulty real [not null]
+  due text [not null, note: "YYYY-MM-DD"]
+  last_reviewed_at text [not null, note: "YYYY-MM-DD"]
+  scheduled_days integer [not null, default: 0]
+  reps integer [not null, default: 0]
+  lapses integer [not null, default: 0]
+  state integer [not null, default: 0, note: "0 New, 1 Learning, 2 Review, 3 Relearning"]
 }
 
 Table daily_queues {
@@ -569,69 +605,68 @@ Eligible rows are ordered by `RANDOM()`, so each generation is a fresh shuffle.
 
 # How a review updates the schedule
 
-When you grade a problem in `ReviewModal` (rating 1–5 + notes):
+Scheduling uses **FSRS** (the Free Spaced Repetition Scheduler), via the
+[`ts-fsrs`](https://github.com/open-spaced-repetition/ts-fsrs) library. When you grade a
+problem in `ReviewModal` (rating 1–5 + notes):
 
 1. Renderer → `window.api.review.submit(payload)` → channel `review:submit`.
-2. The handler in [`ipc.ts`](src/main/ipc.ts) reads the configured intervals
-   (`getRatingIntervals(db)`) and calls
-   `getNextReviewDate(rating, today, intervals)` from [`scheduler.ts`](src/main/scheduler.ts).
-3. A new `reviews` row is inserted (`reviewed_at = today`, `next_review_at = computed`).
-4. The originating `daily_queue_items` row is marked `completed`.
+2. The handler in [`ipc.ts`](src/main/ipc.ts) loads the problem's prior FSRS state
+   (`getProblemState`, or `null` if never reviewed) and calls
+   `applyRating(prev, rating, today)` in [`scheduler.ts`](src/main/scheduler.ts).
+3. In **one transaction**: a new `reviews` row is inserted
+   (`reviewed_at = today`, `next_review_at = state.due`), the `problem_state` row is
+   upserted with the new stability/difficulty/due, and the `daily_queue_items` row is
+   marked `completed`.
 
-Because eligibility keys off the **latest** review, that single insert is what pushes the
-problem out of the due set until `next_review_at`. That's the entire spaced-repetition loop.
+Eligibility still keys off `reviews.next_review_at` (which equals the FSRS `due` on every
+submit), so that single transaction is what pushes the problem out of the due set until
+its next review. That's the entire spaced-repetition loop.
+
+### How FSRS schedules
+
+FSRS models each problem's memory with three quantities (stored per problem in
+`problem_state`):
+
+- **stability** — how many days the memory is expected to last (roughly, the interval at
+  which you'd recall it ~90% of the time). It **grows** every time you succeed, so
+  well-known problems drift out to weeks and months.
+- **difficulty** — intrinsic hardness (1–10), nudged by your ratings.
+- **retrievability** — your predicted recall *right now*, which decays as time passes.
+
+The next review is scheduled for when your retrievability is predicted to fall to the
+**request retention** target (`REQUEST_RETENTION = 0.9`). Higher-rated reviews increase
+stability more, so the better you know something, the longer until it returns.
 
 ### Scheduling logic — one source of truth: `scheduler.ts`
 
-**All** review-timing logic lives in [`src/main/scheduler.ts`](src/main/scheduler.ts), and
-two things are defined there and *nowhere else*:
+**All** review-timing logic lives in [`src/main/scheduler.ts`](src/main/scheduler.ts):
 
-1. **`DEFAULT_RATING_INTERVALS`** — the canonical default rating → days mapping.
-2. **`getNextReviewDate(rating, fromDate, intervals)`** — the only function that computes a
-   next-review date.
+1. **`applyRating(prev, rating, today)`** — the only place a next-review date and memory
+   state are computed. Wraps `ts-fsrs`; converts our `SchedulerState` ⇄ a ts-fsrs `Card`.
+2. **`RATING_TO_GRADE`** — maps the app's 1–5 scale to FSRS's 4 grades
+   (`1→Again, 2→Hard, 3→Good, 4→Easy, 5→Easy`). Change feel by editing this one constant.
+3. **`replayHistory(reviews)`** — folds a review sequence into a state. Used by
+   [`backfill.ts`](src/main/backfill.ts) (`ensureProblemStates`) to reconstruct
+   `problem_state` for pre-FSRS or CSV-imported reviews on startup/import.
 
-The mapping is also **user-configurable**: it's stored in the `rating_intervals` DB table
-and editable on the **Settings** screen. The split is deliberate —
-
-| Concern | Lives in | What it is |
-|---|---|---|
-| The default values + the date math | `src/main/scheduler.ts` | **logic** (one source of truth) |
-| The *currently configured* values | `rating_intervals` table | **data** |
-
-So the schema never hardcodes interval numbers. On startup (and during `npm run seed`),
-`ensureRatingIntervals(db, DEFAULT_RATING_INTERVALS)` does an `INSERT OR IGNORE` to fill any
-missing rows from the scheduler's defaults — which means it seeds a fresh DB but never
-clobbers values you've customized.
-
-Defaults:
-
-| Rating | Next review in |
-|---|---|
-| 1 | 1 day |
-| 2 | 2 days |
-| 3 | 3 days |
-| 4 | 5 days |
-| 5 | 7 days |
-
-The data flow when intervals are read or changed:
+The data flow on review submit:
 
 ```
-Settings screen ⇄ api.settings.getIntervals / updateIntervals
-   → channels settings:get-intervals / settings:update-intervals   (src/main/ipc.ts)
-   → getRatingIntervals / setRatingIntervals                       (src/db/settings.ts)
-   → rating_intervals table
-
-Review submit
-   → getRatingIntervals(db)            (load current config)
-   → getNextReviewDate(rating, today, intervals)   (src/main/scheduler.ts — the math)
+Review submit (src/main/ipc.ts)
+   → getProblemState(db, problemId)             (prior FSRS state, or null)
+   → applyRating(prev, rating, today)           (src/main/scheduler.ts — the math)
+   → insertReview + upsertProblemState + mark completed   (one transaction)
 ```
 
-To switch to **FSRS**, SM-2, or anything else, replace this one file — nothing else in the
-codebase contains scheduling logic. Note the current algorithm is *stateless* (fixed
-intervals per rating). A stateful algorithm like FSRS, which tracks per-problem memory state
-(ease/stability/difficulty), would additionally need a per-problem state table (e.g.
-`problem_state`) — that's the natural next step when FSRS lands, and intentionally **not**
-added yet, to keep a single source of truth for "when is this due?" today.
+The algorithm is **stateful**, so its memory lives in the `problem_state` table while the
+math + parameters live in `scheduler.ts`. To switch to SM-2 or another algorithm, replace
+that one file — nothing else in the codebase computes scheduling.
+
+> **Transitional note:** databases created before the FSRS migration have
+> `reviews.next_review_at` values from the old fixed-interval algorithm until each problem
+> is reviewed once under FSRS. `ensureProblemStates` rebuilds `problem_state` from history
+> immediately (so the Forecast and the *next* interval are FSRS-correct), but the current
+> queue's due dates only fully converge as you re-review.
 
 ---
 
@@ -641,17 +676,17 @@ added yet, to keep a single source of truth for "when is this due?" today.
   Edited on the Settings screen; consumed by the generator.
 - **Difficulty settings** (`difficulty_settings`): a single global row toggling
   Easy/Medium/Hard. Defaults: Easy off, Medium on, Hard on.
-- **Review intervals** (`rating_intervals`): the days-until-due per rating, editable on the
-  Settings screen. Defaults are seeded from `DEFAULT_RATING_INTERVALS` in
-  [`src/main/scheduler.ts`](src/main/scheduler.ts) — see
-  [the scheduling section](#scheduling-logic--one-source-of-truth-schedulerts).
+- **Review scheduling**: handled automatically by FSRS (see
+  [How a review updates the schedule](#how-a-review-updates-the-schedule)) — there are no
+  user-editable intervals. The Settings screen just explains this and points at the
+  **Forecast** tab.
 - **Active list** (`list_settings.active_list`): a dropdown on the Settings screen picking
   which list the queue draws from (`''` = All Problems). Options come from the distinct
   `problem_lists.list_name` values. Switching it is deferred — see the note under
   [How the daily queue is built](#how-the-daily-queue-is-built).
 - **Seeding** (`npm run seed`, [`src/seed/run.ts`](src/seed/run.ts)): idempotently upserts
-  the NeetCode 150 + design problems and ensures default topic settings and rating intervals,
-  writing to the same DB file the app uses.
+  the NeetCode 150 + Blind 75 + design problems and ensures default topic settings, writing
+  to the same DB file the app uses.
 
 ### Adding a new problem list
 
