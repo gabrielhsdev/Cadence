@@ -3,8 +3,9 @@ import QueueScreen from '../screens/QueueScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import HistoryScreen from '../screens/HistoryScreen';
 import ProblemsScreen from '../screens/ProblemsScreen';
+import ForecastScreen from '../screens/ForecastScreen';
 
-type Screen = 'queue' | 'history' | 'problems' | 'settings';
+type Screen = 'queue' | 'forecast' | 'history' | 'problems' | 'settings';
 
 export default function App(): React.ReactElement {
   const [screen, setScreen] = useState<Screen>('queue');
@@ -19,6 +20,12 @@ export default function App(): React.ReactElement {
             onClick={() => setScreen('queue')}
           >
             Today
+          </button>
+          <button
+            className={`nav-btn${screen === 'forecast' ? ' active' : ''}`}
+            onClick={() => setScreen('forecast')}
+          >
+            Forecast
           </button>
           <button
             className={`nav-btn${screen === 'history' ? ' active' : ''}`}
@@ -42,6 +49,7 @@ export default function App(): React.ReactElement {
       </div>
       <div className="main-content">
         {screen === 'queue' && <QueueScreen />}
+        {screen === 'forecast' && <ForecastScreen />}
         {screen === 'history' && <HistoryScreen />}
         {screen === 'problems' && <ProblemsScreen />}
         {screen === 'settings' && <SettingsScreen />}

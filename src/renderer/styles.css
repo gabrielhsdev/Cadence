@@ -632,3 +632,87 @@ html, body {
   color: var(--text-muted);
   font-size: 13px;
 }
+
+/* Forecast calendar */
+.forecast-summary {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+.forecast-stat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  min-width: 96px;
+}
+.forecast-stat-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+}
+.forecast-stat-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: 2px;
+}
+.forecast-weekdays,
+.forecast-week {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+.forecast-weekdays {
+  margin-bottom: 6px;
+}
+.forecast-weekday {
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.forecast-week {
+  margin-bottom: 6px;
+}
+.forecast-day {
+  aspect-ratio: 1 / 1;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 56px;
+}
+.forecast-day.empty {
+  border-color: transparent;
+}
+.forecast-day.today {
+  border-color: var(--accent);
+}
+.forecast-day-num {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.forecast-day.today .forecast-day-num {
+  color: var(--accent);
+  font-weight: 700;
+}
+.forecast-day-count {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  align-self: flex-end;
+}
+.forecast-month-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin: 18px 0 10px;
+}
