@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ReviewHistoryEntry } from '../types';
 import { api } from '../renderer/api';
+import { parseIsoLocal } from '../dateUtils';
 import ConfirmModal from '../components/ConfirmModal';
 
 const RATING_LABEL: Record<number, string> = {
@@ -20,7 +21,7 @@ const RATING_COLOR: Record<number, string> = {
 };
 
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-US', {
+  return parseIsoLocal(iso).toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',

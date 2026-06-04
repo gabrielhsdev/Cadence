@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { toIso, todayIso, addDaysIso } from './dateUtils';
+import { toIso, todayIso, addDaysIso, parseIsoLocal } from './dateUtils';
 
 test('toIso formats a Date as local YYYY-MM-DD', () => {
   // Construct with local components so the assertion is timezone-independent.
@@ -10,6 +10,15 @@ test('toIso formats a Date as local YYYY-MM-DD', () => {
 
 test('todayIso matches toIso(new Date())', () => {
   assert.equal(todayIso(), toIso(new Date()));
+});
+
+test('parseIsoLocal yields the same calendar day in any timezone (no UTC shift)', () => {
+  const d = parseIsoLocal('2026-06-04');
+  assert.equal(d.getFullYear(), 2026);
+  assert.equal(d.getMonth(), 5); // June (0-based)
+  assert.equal(d.getDate(), 4); // must stay the 4th, not roll back to the 3rd
+  // Round-trips with toIso regardless of the host timezone.
+  assert.equal(toIso(parseIsoLocal('2026-12-31')), '2026-12-31');
 });
 
 test('addDaysIso does whole-day arithmetic across month and year boundaries', () => {

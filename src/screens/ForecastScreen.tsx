@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { MonthForecast, Problem } from '../types';
 import { api } from '../renderer/api';
-import { toIso } from '../dateUtils';
+import { toIso, parseIsoLocal } from '../dateUtils';
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const MONTH_NAMES = [
@@ -138,7 +138,7 @@ export default function ForecastScreen(): React.ReactElement {
 
           <div className="forecast-detail">
             <div className="forecast-detail-title">
-              {new Date(selected + 'T00:00:00').toLocaleDateString('en-US', {
+              {parseIsoLocal(selected).toLocaleDateString('en-US', {
                 weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
               })}
               {selected === todayIso && ' · today'}

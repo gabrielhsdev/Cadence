@@ -23,3 +23,11 @@ export function addDaysIso(iso: string, days: number): string {
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
+
+// Parse a YYYY-MM-DD string as a LOCAL date (midnight). Use this for display —
+// `new Date('2026-06-04')` parses as UTC and renders as the PREVIOUS day in any
+// timezone behind UTC (the date-only off-by-one). This avoids that.
+export function parseIsoLocal(iso: string): Date {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
