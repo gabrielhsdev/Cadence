@@ -4,10 +4,10 @@ import Database from 'better-sqlite3';
 import { initSchema } from './schema';
 import { addProblem } from './problems';
 import { insertReview } from './reviews';
-import { getProblemState, getForecast } from './state';
+import { getProblemState, upsertProblemState, getMonthForecast } from './state';
 import { ensureProblemStates } from '../main/backfill';
 import { applyRating } from '../main/scheduler';
-import { NewProblem } from '../types';
+import { NewProblem, ProblemState } from '../types';
 
 function freshDb(): Database.Database {
   const db = new Database(':memory:');
@@ -54,23 +54,41 @@ test('ensureProblemStates is idempotent and skips already-stated problems', () =
   assert.deepEqual(getProblemState(db, p.id), first);
 });
 
-test('getForecast counts new, overdue, and upcoming due dates', () => {
+function setDue(db: Database.Database, problemId: number, due: string): void {
+  const s: ProblemState = {
+    problem_id: problemId,
+    stability: 10,
+    difficulty: 5,
+    due,
+    last_reviewed_at: '2026-06-01',
+    scheduled_days: 7,
+    reps: 1,
+    lapses: 0,
+    state: 2,
+  };
+  upsertProblemState(db, s);
+}
+
+test('getMonthForecast groups due (future) and solved (past) by day', () => {
   const db = freshDb();
-  // never reviewed → counts as "new"
-  addProblem(db, makeProblem({ title: 'New One' }));
+  addProblem(db, makeProblem({ title: 'New' })); // never reviewed → newCount
 
-  const overdue = addProblem(db, makeProblem({ title: 'Overdue' }));
-  insertReview(db, overdue.id, 1, '', '2026-05-01', '2026-05-02');
+  const over = addProblem(db, makeProblem({ title: 'Over' }));
+  setDue(db, over.id, '2026-06-01'); // before today → overdue, not on a day cell
 
-  const upcoming = addProblem(db, makeProblem({ title: 'Upcoming' }));
-  insertReview(db, upcoming.id, 5, '', '2026-06-01', '2026-06-20');
+  const fut = addProblem(db, makeProblem({ title: 'Fut' }));
+  setDue(db, fut.id, '2026-06-20'); // future, in month → due list
 
-  ensureProblemStates(db);
+  const past = addProblem(db, makeProblem({ title: 'Past' }));
+  setDue(db, past.id, '2026-07-05'); // its next due is next month
+  insertReview(db, past.id, 4, '', '2026-06-10', '2026-07-05'); // solved on 06-10
 
-  const today = '2026-06-02';
-  const f = getForecast(db, today, '2026-09-01');
+  const f = getMonthForecast(db, '2026-06', '2026-06-15');
+  assert.equal(f.overdue, 1, 'one problem overdue');
   assert.equal(f.newCount, 1, 'one never-reviewed problem');
-  assert.equal(f.overdue, 1, 'one problem due before today');
-  const totalUpcoming = f.upcoming.reduce((s, u) => s + u.count, 0);
-  assert.equal(totalUpcoming, 1, 'one problem due within the window');
+  assert.equal(f.days['2026-06-20'].due.length, 1, 'future due pinned to its day');
+  assert.equal(f.days['2026-06-20'].due[0].title, 'Fut');
+  assert.equal(f.days['2026-06-10'].reviewed.length, 1, 'past review pinned to its day');
+  assert.equal(f.days['2026-06-10'].reviewed[0].rating, 4);
+  assert.equal(f.days['2026-06-01'], undefined, 'overdue not shown as a past due cell');
 });

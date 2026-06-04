@@ -86,11 +86,19 @@ export interface ProblemState extends SchedulerState {
   problem_id: number;
 }
 
-// Upcoming-review forecast for the Forecast calendar.
-export interface ReviewForecast {
-  overdue: number; // scheduled before today and not yet reviewed
+// One day in the Forecast calendar: problems due that day (today/future) and
+// problems solved that day (past). A given day usually has one or the other.
+export interface ForecastDay {
+  due: Problem[];
+  reviewed: (Problem & { rating: number })[];
+}
+
+// A month's worth of forecast data, fetched in one call. `days` is keyed by
+// YYYY-MM-DD and only contains non-empty days. `overdue`/`newCount` are global.
+export interface MonthForecast {
+  overdue: number; // due before today and not yet reviewed
   newCount: number; // problems never reviewed (no state yet)
-  upcoming: { date: string; count: number }[]; // due on each day from today forward
+  days: Record<string, ForecastDay>;
 }
 
 // History

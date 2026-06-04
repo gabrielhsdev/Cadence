@@ -7,7 +7,7 @@ import {
   NewProblem,
   TopicSetting,
   DifficultySettings,
-  ReviewForecast,
+  MonthForecast,
   ReviewHistoryEntry,
 } from '../types';
 
@@ -57,8 +57,8 @@ const api = {
       ipcRenderer.invoke('settings:set-active-list', list),
   },
   forecast: {
-    get: (): Promise<ReviewForecast> =>
-      ipcRenderer.invoke('forecast:get'),
+    getMonth: (month: string): Promise<MonthForecast> =>
+      ipcRenderer.invoke('forecast:get-month', month),
   },
   history: {
     getAll: (): Promise<ReviewHistoryEntry[]> =>

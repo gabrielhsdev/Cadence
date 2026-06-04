@@ -691,8 +691,19 @@ html, body {
 .forecast-day.empty {
   border-color: transparent;
 }
+.forecast-day.clickable {
+  cursor: pointer;
+  transition: border-color var(--t), background var(--t);
+}
+.forecast-day.clickable:hover {
+  border-color: var(--border-strong);
+}
 .forecast-day.today {
   border-color: var(--accent);
+}
+.forecast-day.selected {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
 }
 .forecast-day-num {
   font-size: 11px;
@@ -708,11 +719,41 @@ html, body {
   color: var(--text);
   align-self: flex-end;
 }
-.forecast-month-label {
-  font-size: 12px;
-  font-weight: 700;
+
+/* Forecast month navigation */
+.forecast-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.forecast-nav-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* Forecast day detail panel */
+.forecast-detail {
+  margin-top: 20px;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+.forecast-detail-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+.forecast-detail-empty {
+  font-size: 13px;
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  margin: 18px 0 10px;
+}
+.forecast-detail-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
 }

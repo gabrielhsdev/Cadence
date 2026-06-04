@@ -222,7 +222,7 @@ src/
 
   screens/              # One component per top-nav tab
     QueueScreen.tsx     # "Today" — the daily queue grouped by topic
-    ForecastScreen.tsx  # Calendar heatmap of upcoming due problems (90 days)
+    ForecastScreen.tsx  # Month calendar: reviews due ahead + problems solved (click a day)
     HistoryScreen.tsx   # Past reviews; CSV import/export; reset
     ProblemsScreen.tsx  # Browse/search all problems; add to today
     SettingsScreen.tsx  # Per-topic counts + global difficulty toggles

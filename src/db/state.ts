@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { ProblemState, ReviewForecast } from '../types';
+import { MonthForecast, Problem, ProblemState } from '../types';
 
 export function getProblemState(db: Database.Database, problemId: number): ProblemState | undefined {
   return db
@@ -38,27 +38,58 @@ export function getProblemIdsNeedingState(db: Database.Database): number[] {
   return rows.map((r) => r.problem_id);
 }
 
-// Count of problems due on each day from `today` through `endIso` (inclusive),
-// plus overdue and never-reviewed ("new") totals. Drives the Forecast calendar.
-export function getForecast(
+function firstOfNextMonth(month: string): string {
+  const [y, m] = month.split('-').map(Number);
+  const ny = m === 12 ? y + 1 : y;
+  const nm = m === 12 ? 1 : m + 1;
+  return `${ny}-${String(nm).padStart(2, '0')}-01`;
+}
+
+// One month of forecast data in a single query pass: for each day in `month`
+// ('YYYY-MM'), the problems DUE that day (today/future) and the problems
+// REVIEWED that day (past), plus global overdue / never-reviewed counts.
+// Due dates before `today` are overdue (surfaced in the count, not pinned to a
+// past day), so the due list starts at max(monthStart, today).
+export function getMonthForecast(
   db: Database.Database,
-  today: string,
-  endIso: string
-): ReviewForecast {
-  const upcoming = db
+  month: string,
+  today: string
+): MonthForecast {
+  const monthStart = `${month}-01`;
+  const nextMonthStart = firstOfNextMonth(month);
+  const dueFrom = today > monthStart ? today : monthStart;
+
+  const dueRows = db
     .prepare(`
-      SELECT due AS date, COUNT(*) AS count
-      FROM problem_state
-      WHERE due >= ? AND due <= ?
-      GROUP BY due
-      ORDER BY due
+      SELECT p.*, ps.due AS _date
+      FROM problem_state ps
+      JOIN problems p ON p.id = ps.problem_id
+      WHERE ps.due >= ? AND ps.due < ?
+      ORDER BY p.topic, p.title
     `)
-    .all(today, endIso) as { date: string; count: number }[];
+    .all(dueFrom, nextMonthStart) as (Problem & { _date: string })[];
+
+  const reviewedRows = db
+    .prepare(`
+      SELECT p.*, r.rating AS _rating, r.reviewed_at AS _date
+      FROM reviews r
+      JOIN problems p ON p.id = r.problem_id
+      WHERE r.reviewed_at >= ? AND r.reviewed_at < ?
+      ORDER BY r.id DESC
+    `)
+    .all(monthStart, nextMonthStart) as (Problem & { _rating: number; _date: string })[];
+
+  const days: MonthForecast['days'] = {};
+  const dayOf = (d: string): MonthForecast['days'][string] =>
+    (days[d] ??= { due: [], reviewed: [] });
+  for (const { _date, ...p } of dueRows) dayOf(_date).due.push(p);
+  for (const { _date, _rating, ...p } of reviewedRows) {
+    dayOf(_date).reviewed.push({ ...p, rating: _rating });
+  }
 
   const overdue = (
     db.prepare('SELECT COUNT(*) AS n FROM problem_state WHERE due < ?').get(today) as { n: number }
   ).n;
-
   const totalProblems = (
     db.prepare('SELECT COUNT(*) AS n FROM problems').get() as { n: number }
   ).n;
@@ -66,5 +97,5 @@ export function getForecast(
     db.prepare('SELECT COUNT(*) AS n FROM problem_state').get() as { n: number }
   ).n;
 
-  return { overdue, newCount: totalProblems - withState, upcoming };
+  return { overdue, newCount: totalProblems - withState, days };
 }

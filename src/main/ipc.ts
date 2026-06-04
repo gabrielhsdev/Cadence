@@ -17,7 +17,7 @@ import {
   importReviews,
   getProblemsReviewedToday,
 } from '../db/reviews';
-import { getProblemState, upsertProblemState, getForecast } from '../db/state';
+import { getProblemState, upsertProblemState, getMonthForecast } from '../db/state';
 import { ensureProblemStates } from './backfill';
 import { rowsToCsv, csvToRows, CsvRow } from './csv';
 import {
@@ -41,11 +41,8 @@ import {
 } from '../db/settings';
 import { getOrGenerateQueue, generateQueue, refreshQueueItem, addMoreForTopic } from './generator';
 import { applyRating } from './scheduler';
-import { todayIso, addDaysIso } from '../dateUtils';
+import { todayIso } from '../dateUtils';
 import { NewProblem, ReviewPayload, TopicSetting, DifficultySettings, QueueGroupedByTopic } from '../types';
-
-// How far ahead the Forecast calendar projects.
-const FORECAST_HORIZON_DAYS = 90;
 
 // ── IPC contract ─────────────────────────────────────────────────────────────
 // Channel is the CANONICAL list of every IPC channel. It is enforced two ways:
@@ -74,7 +71,7 @@ type Channel =
   | 'settings:get-lists'
   | 'settings:get-active-list'
   | 'settings:set-active-list'
-  | 'forecast:get'
+  | 'forecast:get-month'
   | 'history:get-all'
   | 'history:reset'
   | 'history:export'
@@ -278,10 +275,11 @@ function registerHistoryHandlers(db: Database.Database): void {
 }
 
 function registerForecastHandlers(db: Database.Database): void {
-  handle('forecast:get', async () => {
-    const today = todayIso();
-    return getForecast(db, today, addDaysIso(today, FORECAST_HORIZON_DAYS));
-  });
+  // month is 'YYYY-MM'. Returns due-by-day (today/future) + reviewed-by-day
+  // (past) for that month, in one call.
+  handle('forecast:get-month', async (_event, month: string) =>
+    getMonthForecast(db, month, todayIso())
+  );
 }
 
 export function registerIpcHandlers(): void {

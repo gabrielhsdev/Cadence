@@ -1,68 +1,67 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ReviewForecast } from '../types';
+import { MonthForecast, Problem } from '../types';
 import { api } from '../renderer/api';
 import { toIso } from '../dateUtils';
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-const HORIZON_DAYS = 90;
-const ACCENT_RGB = '94, 155, 255';
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+const RATING_LABEL: Record<number, string> = { 1: 'Again', 2: 'Hard', 3: 'Good', 4: 'Easy', 5: 'Easy' };
 
-interface Cell {
-  iso: string;
-  date: Date;
-  count: number;
-  isToday: boolean;
+// 'YYYY-MM' for a given year/monthIndex(0-11).
+function monthKey(year: number, monthIndex: number): string {
+  return `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
 }
 
 export default function ForecastScreen(): React.ReactElement {
-  const [forecast, setForecast] = useState<ReviewForecast | null>(null);
+  const todayIso = toIso(new Date());
+  const [cursor, setCursor] = useState(() => {
+    const d = new Date();
+    return { year: d.getFullYear(), month: d.getMonth() }; // month: 0-11
+  });
+  const [data, setData] = useState<MonthForecast | null>(null);
   const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<string>(todayIso);
+
+  const key = monthKey(cursor.year, cursor.month);
 
   const load = useCallback(async () => {
-    const data = await api.forecast.get();
-    setForecast(data);
+    setLoading(true);
+    const d = await api.forecast.getMonth(key);
+    setData(d);
     setLoading(false);
-  }, []);
+  }, [key]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  if (loading || !forecast) return <div className="spinner">Loading forecast…</div>;
-
-  const countByDate = new Map(forecast.upcoming.map((u) => [u.date, u.count]));
-  const maxCount = forecast.upcoming.reduce((m, u) => Math.max(m, u.count), 0);
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const todayIso = toIso(today);
-
-  // Build a flat list of day cells from the start of this week through the
-  // horizon, padding the first week so weekday columns line up.
-  const cells: Cell[] = [];
-  for (let i = 0; i < today.getDay(); i++) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - (today.getDay() - i));
-    cells.push({ iso: '', date: d, count: 0, isToday: false });
-  }
-  for (let i = 0; i <= HORIZON_DAYS; i++) {
-    const d = new Date(today);
-    d.setDate(d.getDate() + i);
-    const iso = toIso(d);
-    cells.push({ iso, date: d, count: countByDate.get(iso) ?? 0, isToday: iso === todayIso });
+  function step(delta: number): void {
+    setCursor((c) => {
+      const d = new Date(c.year, c.month + delta, 1);
+      return { year: d.getFullYear(), month: d.getMonth() };
+    });
   }
 
-  // Chunk into weeks of 7.
-  const weeks: Cell[][] = [];
+  const days = data?.days ?? {};
+
+  // Build the grid: leading blanks + each day of the month.
+  const first = new Date(cursor.year, cursor.month, 1);
+  const daysInMonth = new Date(cursor.year, cursor.month + 1, 0).getDate();
+  const cells: (string | null)[] = [];
+  for (let i = 0; i < first.getDay(); i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(toIso(new Date(cursor.year, cursor.month, d)));
+  while (cells.length % 7 !== 0) cells.push(null);
+  const weeks: (string | null)[][] = [];
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
 
-  const totalUpcoming = forecast.upcoming.reduce((s, u) => s + u.count, 0);
-  const dueToday = countByDate.get(todayIso) ?? 0;
+  const sel = days[selected];
+  const selPast = selected < todayIso;
 
-  function cellStyle(count: number): React.CSSProperties {
-    if (count === 0) return {};
-    const intensity = 0.15 + 0.65 * (maxCount > 0 ? count / maxCount : 0);
-    return { background: `rgba(${ACCENT_RGB}, ${intensity.toFixed(3)})` };
+  function openProblem(p: Problem): void {
+    if (p.leetcode_url) api.shell.openUrl(p.leetcode_url);
   }
 
   return (
@@ -70,69 +69,110 @@ export default function ForecastScreen(): React.ReactElement {
       <div className="queue-header" style={{ marginBottom: 16 }}>
         <div>
           <div style={{ fontWeight: 600, fontSize: 15 }}>Forecast</div>
-          <div className="queue-date">Problems becoming due over the next {HORIZON_DAYS} days</div>
+          <div className="queue-date">Reviews due ahead · problems solved in the past</div>
         </div>
       </div>
 
       <div className="forecast-summary">
         <div className="forecast-stat">
-          <div className="forecast-stat-value" style={{ color: forecast.overdue > 0 ? 'var(--warning)' : 'var(--text)' }}>
-            {forecast.overdue}
+          <div className="forecast-stat-value" style={{ color: (data?.overdue ?? 0) > 0 ? 'var(--warning)' : 'var(--text)' }}>
+            {data?.overdue ?? 0}
           </div>
           <div className="forecast-stat-label">Overdue</div>
         </div>
         <div className="forecast-stat">
-          <div className="forecast-stat-value">{dueToday}</div>
-          <div className="forecast-stat-label">Due today</div>
-        </div>
-        <div className="forecast-stat">
-          <div className="forecast-stat-value">{totalUpcoming}</div>
-          <div className="forecast-stat-label">Next {HORIZON_DAYS} days</div>
-        </div>
-        <div className="forecast-stat">
-          <div className="forecast-stat-value">{forecast.newCount}</div>
+          <div className="forecast-stat-value">{data?.newCount ?? 0}</div>
           <div className="forecast-stat-label">Not yet started</div>
         </div>
       </div>
 
-      {totalUpcoming === 0 && forecast.overdue === 0 ? (
-        <div className="empty-state">
-          <h3>Nothing scheduled yet</h3>
-          <p>
-            Review problems from your daily queue and FSRS will schedule them here. The more
-            you review, the more your future fills in.
-          </p>
-        </div>
+      <div className="forecast-nav">
+        <button className="btn btn-sm" onClick={() => step(-1)}>← Prev</button>
+        <span className="forecast-nav-label">{MONTH_NAMES[cursor.month]} {cursor.year}</span>
+        <button className="btn btn-sm" onClick={() => step(1)}>Next →</button>
+      </div>
+
+      {loading ? (
+        <div className="spinner">Loading…</div>
       ) : (
         <>
           <div className="forecast-weekdays">
-            {WEEKDAYS.map((d, i) => (
-              <div key={i} className="forecast-weekday">{d}</div>
-            ))}
+            {WEEKDAYS.map((d, i) => <div key={i} className="forecast-weekday">{d}</div>)}
           </div>
           {weeks.map((week, wi) => (
             <div key={wi} className="forecast-week">
-              {week.map((cell, ci) => {
-                if (!cell.iso) return <div key={ci} className="forecast-day empty" />;
-                const showMonth = cell.date.getDate() === 1 || (wi === 0 && ci === 0) || cell.isToday;
+              {week.map((iso, ci) => {
+                if (!iso) return <div key={ci} className="forecast-day empty" />;
+                const day = days[iso];
+                const dueN = day?.due.length ?? 0;
+                const revN = day?.reviewed.length ?? 0;
+                const isToday = iso === todayIso;
+                const isPast = iso < todayIso;
+                const count = isPast ? revN : dueN;
+                const hasItems = count > 0;
+                // Past activity is green (done); upcoming due is accent (to-do).
+                const bg = !hasItems
+                  ? undefined
+                  : isPast
+                    ? 'rgba(61, 189, 110, 0.22)'
+                    : 'rgba(94, 155, 255, 0.22)';
                 return (
                   <div
                     key={ci}
-                    className={`forecast-day${cell.isToday ? ' today' : ''}`}
-                    style={cellStyle(cell.count)}
-                    title={`${cell.iso}: ${cell.count} due`}
+                    className={
+                      'forecast-day clickable' +
+                      (isToday ? ' today' : '') +
+                      (iso === selected ? ' selected' : '')
+                    }
+                    style={bg ? { background: bg } : undefined}
+                    onClick={() => setSelected(iso)}
+                    title={`${iso}`}
                   >
-                    <span className="forecast-day-num">
-                      {showMonth
-                        ? cell.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                        : cell.date.getDate()}
-                    </span>
-                    {cell.count > 0 && <span className="forecast-day-count">{cell.count}</span>}
+                    <span className="forecast-day-num">{Number(iso.slice(8))}</span>
+                    {hasItems && <span className="forecast-day-count">{count}</span>}
                   </div>
                 );
               })}
             </div>
           ))}
+
+          <div className="forecast-detail">
+            <div className="forecast-detail-title">
+              {new Date(selected + 'T00:00:00').toLocaleDateString('en-US', {
+                weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+              })}
+              {selected === todayIso && ' · today'}
+            </div>
+
+            {selPast ? (
+              (sel?.reviewed.length ?? 0) === 0 ? (
+                <div className="forecast-detail-empty">Nothing solved this day.</div>
+              ) : (
+                sel!.reviewed.map((p, i) => (
+                  <div key={i} className="forecast-detail-row">
+                    <button className="link-btn" onClick={() => openProblem(p)}>{p.title}</button>
+                    <span className="cell-muted">{p.topic}</span>
+                    <span className={`difficulty-badge ${p.difficulty}`}>{p.difficulty}</span>
+                    <span className="cell-muted" style={{ marginLeft: 'auto' }}>
+                      {p.rating} — {RATING_LABEL[p.rating] ?? ''}
+                    </span>
+                  </div>
+                ))
+              )
+            ) : (sel?.due.length ?? 0) === 0 ? (
+              <div className="forecast-detail-empty">
+                Nothing scheduled. {selected === todayIso && 'New problems are pulled in via the Today tab.'}
+              </div>
+            ) : (
+              sel!.due.map((p, i) => (
+                <div key={i} className="forecast-detail-row">
+                  <button className="link-btn" onClick={() => openProblem(p)}>{p.title}</button>
+                  <span className="cell-muted">{p.topic}</span>
+                  <span className={`difficulty-badge ${p.difficulty}`}>{p.difficulty}</span>
+                </div>
+              ))
+            )}
+          </div>
         </>
       )}
     </>
