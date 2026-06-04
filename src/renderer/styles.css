@@ -183,6 +183,35 @@ html, body {
   border-bottom: 1px solid var(--border);
 }
 
+/* Collapse/expand toggle on a topic header — looks like the label, acts as a button */
+.topic-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+}
+.topic-toggle:hover {
+  color: var(--text);
+}
+.topic-toggle-caret {
+  font-size: 9px;
+  color: var(--text-dim);
+  width: 9px;
+}
+.topic-toggle-count {
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
 .queue-item {
   display: flex;
   align-items: center;

@@ -20,6 +20,26 @@ const IDLE: BusyState = {
   refreshingId: null,
 };
 
+// Per-topic collapsed state is a UI preference, persisted in localStorage (not
+// the DB) so it survives reloads without touching app data.
+const COLLAPSED_KEY = 'cadence.queue.collapsedTopics';
+
+function loadCollapsed(): Record<string, boolean> {
+  try {
+    return JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? '{}');
+  } catch {
+    return {};
+  }
+}
+
+function saveCollapsed(value: Record<string, boolean>): void {
+  try {
+    localStorage.setItem(COLLAPSED_KEY, JSON.stringify(value));
+  } catch {
+    /* ignore quota / unavailable storage */
+  }
+}
+
 export default function QueueScreen(): React.ReactElement {
   const [groups, setGroups] = useState<QueueGroupedByTopic[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,9 +48,18 @@ export default function QueueScreen(): React.ReactElement {
   const [showAddModal, setShowAddModal] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [topicNotice, setTopicNotice] = useState<{ topic: string; text: string } | null>(null);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(loadCollapsed);
 
   function setBusyField<K extends keyof BusyState>(key: K, value: BusyState[K]): void {
     setBusy((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function toggleTopic(topic: string): void {
+    setCollapsed((prev) => {
+      const next = { ...prev, [topic]: !prev[topic] };
+      saveCollapsed(next);
+      return next;
+    });
   }
 
   const today = new Date().toLocaleDateString('en-US', {
@@ -181,37 +210,54 @@ export default function QueueScreen(): React.ReactElement {
           </button>
         </div>
       ) : (
-        groups.map((group) => (
-          <div key={group.topic} className="topic-group">
-            <div className="topic-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-              <span>{group.topic}</span>
-              <button
-                className="btn btn-sm"
-                onClick={() => handleAddMoreForTopic(group.topic)}
-                disabled={busy.addingTopic === group.topic}
-                style={{ textTransform: 'none', letterSpacing: 'normal', fontWeight: 500 }}
-              >
-                {busy.addingTopic === group.topic ? '…' : '+ More'}
-              </button>
-            </div>
-            {topicNotice?.topic === group.topic && (
-              <div style={{ fontSize: 11, color: 'var(--warning)', marginBottom: 6 }}>
-                {topicNotice.text}
+        groups.map((group) => {
+          const isCollapsed = !!collapsed[group.topic];
+          const doneCount = group.items.filter((i) => i.status === 'completed').length;
+          return (
+            <div key={group.topic} className="topic-group">
+              <div className="topic-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <button
+                  className="topic-toggle"
+                  onClick={() => toggleTopic(group.topic)}
+                  title={isCollapsed ? 'Expand topic' : 'Collapse topic'}
+                  aria-expanded={!isCollapsed}
+                >
+                  <span className="topic-toggle-caret">{isCollapsed ? '▸' : '▾'}</span>
+                  <span>{group.topic}</span>
+                  <span className="topic-toggle-count">{doneCount}/{group.items.length}</span>
+                </button>
+                <button
+                  className="btn btn-sm"
+                  onClick={() => handleAddMoreForTopic(group.topic)}
+                  disabled={busy.addingTopic === group.topic}
+                  style={{ textTransform: 'none', letterSpacing: 'normal', fontWeight: 500 }}
+                >
+                  {busy.addingTopic === group.topic ? '…' : '+ More'}
+                </button>
               </div>
-            )}
-            {group.items.map((item) => (
-              <QueueItem
-                key={item.id}
-                item={item}
-                onOpen={() => handleOpen(item)}
-                onReview={() => setReviewItem(item)}
-                onRefresh={() => handleRefresh(item)}
-                onSkip={() => handleSkip(item)}
-                refreshing={busy.refreshingId === item.id}
-              />
-            ))}
-          </div>
-        ))
+              {!isCollapsed && (
+                <>
+                  {topicNotice?.topic === group.topic && (
+                    <div style={{ fontSize: 11, color: 'var(--warning)', marginBottom: 6 }}>
+                      {topicNotice.text}
+                    </div>
+                  )}
+                  {group.items.map((item) => (
+                    <QueueItem
+                      key={item.id}
+                      item={item}
+                      onOpen={() => handleOpen(item)}
+                      onReview={() => setReviewItem(item)}
+                      onRefresh={() => handleRefresh(item)}
+                      onSkip={() => handleSkip(item)}
+                      refreshing={busy.refreshingId === item.id}
+                    />
+                  ))}
+                </>
+              )}
+            </div>
+          );
+        })
       )}
 
       {reviewItem && (
