@@ -86,6 +86,11 @@ export interface ProblemState extends SchedulerState {
   problem_id: number;
 }
 
+// An overdue problem (due before today) plus its due date, for the Overdue list.
+export interface OverdueProblem extends Problem {
+  due: string;
+}
+
 // One day in the Forecast calendar: problems due that day (today/future) and
 // problems solved that day (past). A given day usually has one or the other.
 export interface ForecastDay {

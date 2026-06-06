@@ -8,6 +8,7 @@ import {
   TopicSetting,
   DifficultySettings,
   MonthForecast,
+  OverdueProblem,
   ReviewHistoryEntry,
 } from '../types';
 
@@ -59,6 +60,8 @@ const api = {
   forecast: {
     getMonth: (month: string): Promise<MonthForecast> =>
       ipcRenderer.invoke('forecast:get-month', month),
+    getOverdue: (): Promise<OverdueProblem[]> =>
+      ipcRenderer.invoke('forecast:get-overdue'),
   },
   history: {
     getAll: (): Promise<ReviewHistoryEntry[]> =>

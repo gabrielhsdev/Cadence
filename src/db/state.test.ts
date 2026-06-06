@@ -4,7 +4,7 @@ import Database from 'better-sqlite3';
 import { initSchema } from './schema';
 import { addProblem } from './problems';
 import { insertReview } from './reviews';
-import { getProblemState, upsertProblemState, getMonthForecast } from './state';
+import { getProblemState, upsertProblemState, getMonthForecast, getOverdueProblems } from './state';
 import { ensureProblemStates } from '../main/backfill';
 import { applyRating } from '../main/scheduler';
 import { NewProblem, ProblemState } from '../types';
@@ -91,4 +91,20 @@ test('getMonthForecast groups due (future) and solved (past) by day', () => {
   assert.equal(f.days['2026-06-10'].reviewed.length, 1, 'past review pinned to its day');
   assert.equal(f.days['2026-06-10'].reviewed[0].rating, 4);
   assert.equal(f.days['2026-06-01'], undefined, 'overdue not shown as a past due cell');
+});
+
+test('getOverdueProblems lists due-before-today, most overdue first', () => {
+  const db = freshDb();
+  const a = addProblem(db, makeProblem({ title: 'A' }));
+  const b = addProblem(db, makeProblem({ title: 'B' }));
+  const future = addProblem(db, makeProblem({ title: 'Future' }));
+  setDue(db, a.id, '2026-06-01');
+  setDue(db, b.id, '2026-05-20');
+  setDue(db, future.id, '2026-06-20');
+
+  const list = getOverdueProblems(db, '2026-06-15');
+  assert.equal(list.length, 2, 'future-due problem excluded');
+  assert.equal(list[0].title, 'B', 'oldest due first');
+  assert.equal(list[0].due, '2026-05-20');
+  assert.equal(list[1].title, 'A');
 });

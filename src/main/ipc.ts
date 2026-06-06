@@ -17,7 +17,7 @@ import {
   importReviews,
   getProblemsReviewedToday,
 } from '../db/reviews';
-import { getProblemState, upsertProblemState, getMonthForecast } from '../db/state';
+import { getProblemState, upsertProblemState, getMonthForecast, getOverdueProblems } from '../db/state';
 import { ensureProblemStates } from './backfill';
 import { rowsToCsv, csvToRows, CsvRow } from './csv';
 import {
@@ -72,6 +72,7 @@ type Channel =
   | 'settings:get-active-list'
   | 'settings:set-active-list'
   | 'forecast:get-month'
+  | 'forecast:get-overdue'
   | 'history:get-all'
   | 'history:reset'
   | 'history:export'
@@ -280,6 +281,8 @@ function registerForecastHandlers(db: Database.Database): void {
   handle('forecast:get-month', async (_event, month: string) =>
     getMonthForecast(db, month, todayIso())
   );
+
+  handle('forecast:get-overdue', async () => getOverdueProblems(db, todayIso()));
 }
 
 export function registerIpcHandlers(): void {

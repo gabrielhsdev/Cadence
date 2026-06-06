@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { MonthForecast, Problem } from '../types';
+import { MonthForecast, OverdueProblem, Problem } from '../types';
 import { api } from '../renderer/api';
 import { toIso, parseIsoLocal } from '../dateUtils';
 
@@ -24,6 +24,9 @@ export default function ForecastScreen(): React.ReactElement {
   const [data, setData] = useState<MonthForecast | null>(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<string>(todayIso);
+  // Overdue panel: null = showing a day; otherwise showing the overdue list.
+  const [overdue, setOverdue] = useState<OverdueProblem[] | null>(null);
+  const [addedIds, setAddedIds] = useState<Set<number>>(new Set());
 
   const key = monthKey(cursor.year, cursor.month);
 
@@ -64,6 +67,27 @@ export default function ForecastScreen(): React.ReactElement {
     if (p.leetcode_url) api.shell.openUrl(p.leetcode_url);
   }
 
+  function selectDay(iso: string): void {
+    setOverdue(null);
+    setSelected(iso);
+  }
+
+  async function showOverdue(): Promise<void> {
+    setOverdue(await api.forecast.getOverdue());
+  }
+
+  async function addToToday(p: OverdueProblem): Promise<void> {
+    const res = await api.queue.addProblem(p.id);
+    // ok, or already there → treat as "in today's queue"
+    if (res.ok || res.reason === 'already_in_queue') {
+      setAddedIds((prev) => new Set(prev).add(p.id));
+    }
+  }
+
+  function daysOverdue(due: string): number {
+    return Math.round((parseIsoLocal(todayIso).getTime() - parseIsoLocal(due).getTime()) / 86400000);
+  }
+
   return (
     <>
       <div className="queue-header" style={{ marginBottom: 16 }}>
@@ -74,12 +98,16 @@ export default function ForecastScreen(): React.ReactElement {
       </div>
 
       <div className="forecast-summary">
-        <div className="forecast-stat">
+        <button
+          className={'forecast-stat clickable' + (overdue ? ' active' : '')}
+          onClick={showOverdue}
+          title="Show overdue problems"
+        >
           <div className="forecast-stat-value" style={{ color: (data?.overdue ?? 0) > 0 ? 'var(--warning)' : 'var(--text)' }}>
             {data?.overdue ?? 0}
           </div>
-          <div className="forecast-stat-label">Overdue</div>
-        </div>
+          <div className="forecast-stat-label">Overdue ›</div>
+        </button>
         <div className="forecast-stat">
           <div className="forecast-stat-value">{data?.newCount ?? 0}</div>
           <div className="forecast-stat-label">Not yet started</div>
@@ -122,10 +150,10 @@ export default function ForecastScreen(): React.ReactElement {
                     className={
                       'forecast-day clickable' +
                       (isToday ? ' today' : '') +
-                      (iso === selected ? ' selected' : '')
+                      (!overdue && iso === selected ? ' selected' : '')
                     }
                     style={bg ? { background: bg } : undefined}
-                    onClick={() => setSelected(iso)}
+                    onClick={() => selectDay(iso)}
                     title={`${iso}`}
                   >
                     <span className="forecast-day-num">{Number(iso.slice(8))}</span>
@@ -137,6 +165,38 @@ export default function ForecastScreen(): React.ReactElement {
           ))}
 
           <div className="forecast-detail">
+            {overdue ? (
+              <>
+                <div className="forecast-detail-title">Overdue · {overdue.length}</div>
+                {overdue.length === 0 ? (
+                  <div className="forecast-detail-empty">Nothing overdue — you&apos;re caught up.</div>
+                ) : (
+                  <>
+                    <div className="forecast-detail-empty" style={{ marginBottom: 8 }}>
+                      Past their due date. “+ Today” pulls one into your queue so you can review it
+                      (works even for disabled topics).
+                    </div>
+                    {overdue.map((p) => (
+                      <div key={p.id} className="forecast-detail-row">
+                        <button className="link-btn" onClick={() => openProblem(p)}>{p.title}</button>
+                        <span className="cell-muted">{p.topic}</span>
+                        <span className={`difficulty-badge ${p.difficulty}`}>{p.difficulty}</span>
+                        <span className="cell-muted">{daysOverdue(p.due)}d overdue</span>
+                        <button
+                          className="btn btn-sm"
+                          style={{ marginLeft: 'auto' }}
+                          onClick={() => addToToday(p)}
+                          disabled={addedIds.has(p.id)}
+                        >
+                          {addedIds.has(p.id) ? 'Added' : '+ Today'}
+                        </button>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </>
+            ) : (
+            <>
             <div className="forecast-detail-title">
               {parseIsoLocal(selected).toLocaleDateString('en-US', {
                 weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
@@ -171,6 +231,8 @@ export default function ForecastScreen(): React.ReactElement {
                   <span className={`difficulty-badge ${p.difficulty}`}>{p.difficulty}</span>
                 </div>
               ))
+            )}
+            </>
             )}
           </div>
         </>

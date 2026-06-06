@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { MonthForecast, Problem, ProblemState } from '../types';
+import { MonthForecast, OverdueProblem, Problem, ProblemState } from '../types';
 
 export function getProblemState(db: Database.Database, problemId: number): ProblemState | undefined {
   return db
@@ -36,6 +36,20 @@ export function getProblemIdsNeedingState(db: Database.Database): number[] {
     `)
     .all() as { problem_id: number }[];
   return rows.map((r) => r.problem_id);
+}
+
+// Problems due before today (most overdue first). Independent of topic/difficulty
+// filters, so it surfaces overdue problems even in disabled topics.
+export function getOverdueProblems(db: Database.Database, today: string): OverdueProblem[] {
+  return db
+    .prepare(`
+      SELECT p.*, ps.due AS due
+      FROM problem_state ps
+      JOIN problems p ON p.id = ps.problem_id
+      WHERE ps.due < ?
+      ORDER BY ps.due ASC, p.topic, p.title
+    `)
+    .all(today) as OverdueProblem[];
 }
 
 function firstOfNextMonth(month: string): string {
