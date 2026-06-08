@@ -2,23 +2,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ReviewHistoryEntry } from '../types';
 import { api } from '../renderer/api';
 import { parseIsoLocal } from '../dateUtils';
+import { ratingLabel, ratingColor } from '../ratings';
 import ConfirmModal from '../components/ConfirmModal';
-
-const RATING_LABEL: Record<number, string> = {
-  1: 'Blank',
-  2: 'Barely',
-  3: 'Struggled',
-  4: 'Solid',
-  5: 'Easy',
-};
-
-const RATING_COLOR: Record<number, string> = {
-  1: 'var(--hard)',
-  2: '#c07030',
-  3: 'var(--medium)',
-  4: '#60a060',
-  5: 'var(--easy)',
-};
 
 function formatDate(iso: string): string {
   return parseIsoLocal(iso).toLocaleDateString('en-US', {
@@ -196,9 +181,9 @@ export default function HistoryScreen(): React.ReactElement {
                 <td>
                   <span
                     className="rating-pill"
-                    style={{ color: RATING_COLOR[e.rating] }}
+                    style={{ color: ratingColor(e.rating) }}
                   >
-                    {e.rating} — {RATING_LABEL[e.rating] ?? ''}
+                    {e.rating} — {ratingLabel(e.rating)}
                   </span>
                 </td>
                 <td className="cell-muted">{formatDate(e.reviewed_at)}</td>

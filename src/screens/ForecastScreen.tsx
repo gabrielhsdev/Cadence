@@ -2,13 +2,13 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { MonthForecast, OverdueProblem, Problem } from '../types';
 import { api } from '../renderer/api';
 import { toIso, parseIsoLocal } from '../dateUtils';
+import { ratingLabel } from '../ratings';
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
-const RATING_LABEL: Record<number, string> = { 1: 'Again', 2: 'Hard', 3: 'Good', 4: 'Easy', 5: 'Easy' };
 
 // 'YYYY-MM' for a given year/monthIndex(0-11).
 function monthKey(year: number, monthIndex: number): string {
@@ -214,7 +214,7 @@ export default function ForecastScreen(): React.ReactElement {
                     <span className="cell-muted">{p.topic}</span>
                     <span className={`difficulty-badge ${p.difficulty}`}>{p.difficulty}</span>
                     <span className="cell-muted" style={{ marginLeft: 'auto' }}>
-                      {p.rating} — {RATING_LABEL[p.rating] ?? ''}
+                      {p.rating} — {ratingLabel(p.rating)}
                     </span>
                   </div>
                 ))

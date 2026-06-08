@@ -1,14 +1,12 @@
 import React, { useState } from 'react';
 import { QueueItemWithProblem } from '../types';
+import { RATINGS } from '../ratings';
 
 interface Props {
   item: QueueItemWithProblem;
   onSave: (rating: number, notes: string) => void;
   onClose: () => void;
 }
-
-const RATINGS = [1, 2, 3, 4, 5] as const;
-const RATING_LABELS = ['Could not solve', 'Barely recalled', 'Solved with difficulty', 'Solved comfortably', 'Solved immediately'];
 
 export default function ReviewModal({ item, onSave, onClose }: Props): React.ReactElement {
   const [rating, setRating] = useState<number | null>(null);
@@ -31,17 +29,17 @@ export default function ReviewModal({ item, onSave, onClose }: Props): React.Rea
         <div className="rating-row">
           {RATINGS.map((r) => (
             <button
-              key={r}
-              className={`rating-btn${rating === r ? ' selected' : ''}`}
-              onClick={() => setRating(r)}
+              key={r.value}
+              className={`rating-btn${rating === r.value ? ' selected' : ''}`}
+              onClick={() => setRating(r.value)}
             >
-              {r}
+              {r.value}
             </button>
           ))}
         </div>
         <div className="rating-descriptions">
-          {RATING_LABELS.map((label, i) => (
-            <span key={i} className="rating-desc">{label}</span>
+          {RATINGS.map((r) => (
+            <span key={r.value} className="rating-desc">{r.description}</span>
           ))}
         </div>
 
