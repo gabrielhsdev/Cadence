@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Problem, QueueGroupedByTopic, QueueItemWithProblem } from '../types';
 import { api } from '../renderer/api';
-import QueueItem from '../components/QueueItem';
+import TopicGroup from '../components/TopicGroup';
 import ReviewModal from '../components/ReviewModal';
 import AddToQueueModal from '../components/AddToQueueModal';
 import ConfirmModal from '../components/ConfirmModal';
@@ -210,54 +210,22 @@ export default function QueueScreen(): React.ReactElement {
           </button>
         </div>
       ) : (
-        groups.map((group) => {
-          const isCollapsed = !!collapsed[group.topic];
-          const doneCount = group.items.filter((i) => i.status === 'completed').length;
-          return (
-            <div key={group.topic} className="topic-group">
-              <div className="topic-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                <button
-                  className="topic-toggle"
-                  onClick={() => toggleTopic(group.topic)}
-                  title={isCollapsed ? 'Expand topic' : 'Collapse topic'}
-                  aria-expanded={!isCollapsed}
-                >
-                  <span className="topic-toggle-caret">{isCollapsed ? '▸' : '▾'}</span>
-                  <span>{group.topic}</span>
-                  <span className="topic-toggle-count">{doneCount}/{group.items.length}</span>
-                </button>
-                <button
-                  className="btn btn-sm"
-                  onClick={() => handleAddMoreForTopic(group.topic)}
-                  disabled={busy.addingTopic === group.topic}
-                  style={{ textTransform: 'none', letterSpacing: 'normal', fontWeight: 500 }}
-                >
-                  {busy.addingTopic === group.topic ? '…' : '+ More'}
-                </button>
-              </div>
-              {!isCollapsed && (
-                <>
-                  {topicNotice?.topic === group.topic && (
-                    <div style={{ fontSize: 11, color: 'var(--warning)', marginBottom: 6 }}>
-                      {topicNotice.text}
-                    </div>
-                  )}
-                  {group.items.map((item) => (
-                    <QueueItem
-                      key={item.id}
-                      item={item}
-                      onOpen={() => handleOpen(item)}
-                      onReview={() => setReviewItem(item)}
-                      onRefresh={() => handleRefresh(item)}
-                      onSkip={() => handleSkip(item)}
-                      refreshing={busy.refreshingId === item.id}
-                    />
-                  ))}
-                </>
-              )}
-            </div>
-          );
-        })
+        groups.map((group) => (
+          <TopicGroup
+            key={group.topic}
+            group={group}
+            collapsed={!!collapsed[group.topic]}
+            onToggle={() => toggleTopic(group.topic)}
+            addingMore={busy.addingTopic === group.topic}
+            onAddMore={() => handleAddMoreForTopic(group.topic)}
+            notice={topicNotice?.topic === group.topic ? topicNotice.text : undefined}
+            refreshingId={busy.refreshingId}
+            onOpen={handleOpen}
+            onReview={setReviewItem}
+            onRefresh={handleRefresh}
+            onSkip={handleSkip}
+          />
+        ))
       )}
 
       {reviewItem && (
