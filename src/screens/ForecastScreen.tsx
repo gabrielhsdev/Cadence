@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { MonthForecast, OverdueProblem, Problem } from '../types';
+import { ForecastDay, MonthForecast, OverdueProblem, Problem } from '../types';
 import { api } from '../renderer/api';
 import { toIso, parseIsoLocal } from '../dateUtils';
 import { ratingLabel } from '../ratings';
@@ -13,6 +13,103 @@ const MONTH_NAMES = [
 // 'YYYY-MM' for a given year/monthIndex(0-11).
 function monthKey(year: number, monthIndex: number): string {
   return `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
+}
+
+function openProblem(p: Problem): void {
+  if (p.leetcode_url) api.shell.openUrl(p.leetcode_url);
+}
+
+// One problem in a detail list: title (opens LeetCode) + topic + difficulty,
+// with an optional trailing slot (rating, "days overdue", an action button).
+function ProblemRow({ problem, trailing }: { problem: Problem; trailing?: React.ReactNode }): React.ReactElement {
+  return (
+    <div className="forecast-detail-row">
+      <button className="link-btn" onClick={() => openProblem(problem)}>{problem.title}</button>
+      <span className="cell-muted">{problem.topic}</span>
+      <span className={`difficulty-badge ${problem.difficulty}`}>{problem.difficulty}</span>
+      {trailing}
+    </div>
+  );
+}
+
+// Detail for a clicked calendar day: problems solved (past) or due (today/future).
+function DayDetail({ day, isPast, isToday, dateLabel }: {
+  day?: ForecastDay;
+  isPast: boolean;
+  isToday: boolean;
+  dateLabel: string;
+}): React.ReactElement {
+  const reviewed = day?.reviewed ?? [];
+  const due = day?.due ?? [];
+  return (
+    <>
+      <div className="forecast-detail-title">{dateLabel}{isToday && ' · today'}</div>
+      {isPast ? (
+        reviewed.length === 0 ? (
+          <div className="forecast-detail-empty">Nothing solved this day.</div>
+        ) : (
+          reviewed.map((p, i) => (
+            <ProblemRow
+              key={i}
+              problem={p}
+              trailing={<span className="cell-muted" style={{ marginLeft: 'auto' }}>{p.rating} — {ratingLabel(p.rating)}</span>}
+            />
+          ))
+        )
+      ) : due.length === 0 ? (
+        <div className="forecast-detail-empty">
+          Nothing scheduled.{isToday && ' New problems are pulled in via the Today tab.'}
+        </div>
+      ) : (
+        due.map((p, i) => <ProblemRow key={i} problem={p} />)
+      )}
+    </>
+  );
+}
+
+// The Overdue list: each problem with how late it is and a "+ Today" action.
+function OverdueList({ items, addedIds, onAdd, today }: {
+  items: OverdueProblem[];
+  addedIds: Set<number>;
+  onAdd: (p: OverdueProblem) => void;
+  today: string;
+}): React.ReactElement {
+  const daysOverdue = (due: string): number =>
+    Math.round((parseIsoLocal(today).getTime() - parseIsoLocal(due).getTime()) / 86400000);
+  return (
+    <>
+      <div className="forecast-detail-title">Overdue · {items.length}</div>
+      {items.length === 0 ? (
+        <div className="forecast-detail-empty">Nothing overdue — you&apos;re caught up.</div>
+      ) : (
+        <>
+          <div className="forecast-detail-empty" style={{ marginBottom: 8 }}>
+            Past their due date. “+ Today” pulls one into your queue to review (works even for
+            disabled topics).
+          </div>
+          {items.map((p) => (
+            <ProblemRow
+              key={p.id}
+              problem={p}
+              trailing={
+                <>
+                  <span className="cell-muted">{daysOverdue(p.due)}d overdue</span>
+                  <button
+                    className="btn btn-sm"
+                    style={{ marginLeft: 'auto' }}
+                    onClick={() => onAdd(p)}
+                    disabled={addedIds.has(p.id)}
+                  >
+                    {addedIds.has(p.id) ? 'Added' : '+ Today'}
+                  </button>
+                </>
+              }
+            />
+          ))}
+        </>
+      )}
+    </>
+  );
 }
 
 export default function ForecastScreen(): React.ReactElement {
@@ -60,13 +157,6 @@ export default function ForecastScreen(): React.ReactElement {
   const weeks: (string | null)[][] = [];
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
 
-  const sel = days[selected];
-  const selPast = selected < todayIso;
-
-  function openProblem(p: Problem): void {
-    if (p.leetcode_url) api.shell.openUrl(p.leetcode_url);
-  }
-
   function selectDay(iso: string): void {
     setOverdue(null);
     setSelected(iso);
@@ -82,10 +172,6 @@ export default function ForecastScreen(): React.ReactElement {
     if (res.ok || res.reason === 'already_in_queue') {
       setAddedIds((prev) => new Set(prev).add(p.id));
     }
-  }
-
-  function daysOverdue(due: string): number {
-    return Math.round((parseIsoLocal(todayIso).getTime() - parseIsoLocal(due).getTime()) / 86400000);
   }
 
   return (
@@ -166,73 +252,16 @@ export default function ForecastScreen(): React.ReactElement {
 
           <div className="forecast-detail">
             {overdue ? (
-              <>
-                <div className="forecast-detail-title">Overdue · {overdue.length}</div>
-                {overdue.length === 0 ? (
-                  <div className="forecast-detail-empty">Nothing overdue — you&apos;re caught up.</div>
-                ) : (
-                  <>
-                    <div className="forecast-detail-empty" style={{ marginBottom: 8 }}>
-                      Past their due date. “+ Today” pulls one into your queue so you can review it
-                      (works even for disabled topics).
-                    </div>
-                    {overdue.map((p) => (
-                      <div key={p.id} className="forecast-detail-row">
-                        <button className="link-btn" onClick={() => openProblem(p)}>{p.title}</button>
-                        <span className="cell-muted">{p.topic}</span>
-                        <span className={`difficulty-badge ${p.difficulty}`}>{p.difficulty}</span>
-                        <span className="cell-muted">{daysOverdue(p.due)}d overdue</span>
-                        <button
-                          className="btn btn-sm"
-                          style={{ marginLeft: 'auto' }}
-                          onClick={() => addToToday(p)}
-                          disabled={addedIds.has(p.id)}
-                        >
-                          {addedIds.has(p.id) ? 'Added' : '+ Today'}
-                        </button>
-                      </div>
-                    ))}
-                  </>
-                )}
-              </>
+              <OverdueList items={overdue} addedIds={addedIds} onAdd={addToToday} today={todayIso} />
             ) : (
-            <>
-            <div className="forecast-detail-title">
-              {parseIsoLocal(selected).toLocaleDateString('en-US', {
-                weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
-              })}
-              {selected === todayIso && ' · today'}
-            </div>
-
-            {selPast ? (
-              (sel?.reviewed.length ?? 0) === 0 ? (
-                <div className="forecast-detail-empty">Nothing solved this day.</div>
-              ) : (
-                sel!.reviewed.map((p, i) => (
-                  <div key={i} className="forecast-detail-row">
-                    <button className="link-btn" onClick={() => openProblem(p)}>{p.title}</button>
-                    <span className="cell-muted">{p.topic}</span>
-                    <span className={`difficulty-badge ${p.difficulty}`}>{p.difficulty}</span>
-                    <span className="cell-muted" style={{ marginLeft: 'auto' }}>
-                      {p.rating} — {ratingLabel(p.rating)}
-                    </span>
-                  </div>
-                ))
-              )
-            ) : (sel?.due.length ?? 0) === 0 ? (
-              <div className="forecast-detail-empty">
-                Nothing scheduled. {selected === todayIso && 'New problems are pulled in via the Today tab.'}
-              </div>
-            ) : (
-              sel!.due.map((p, i) => (
-                <div key={i} className="forecast-detail-row">
-                  <button className="link-btn" onClick={() => openProblem(p)}>{p.title}</button>
-                  <span className="cell-muted">{p.topic}</span>
-                  <span className={`difficulty-badge ${p.difficulty}`}>{p.difficulty}</span>
-                </div>
-              ))
-            )}
-            </>
+              <DayDetail
+                day={days[selected]}
+                isPast={selected < todayIso}
+                isToday={selected === todayIso}
+                dateLabel={parseIsoLocal(selected).toLocaleDateString('en-US', {
+                  weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+                })}
+              />
             )}
           </div>
         </>
