@@ -41,7 +41,6 @@ export default function ProblemsScreen(): React.ReactElement {
     setProblems((prev) => [...prev, created].sort((a, b) =>
       a.topic.localeCompare(b.topic) || a.title.localeCompare(b.title)
     ));
-    // Update autocomplete lists
     setTopics((prev) => [...new Set([...prev, created.topic])].sort());
     setLists((prev) => [...new Set([...prev, created.list_name])].sort());
   }

@@ -70,7 +70,6 @@ export default function HistoryScreen(): React.ReactElement {
       `Imported ${result.imported} review${result.imported !== 1 ? 's' : ''}${result.skipped ? ` · ${result.skipped} skipped (duplicates)` : ''}`,
       true
     );
-    // Reload list
     const data = await api.history.getAll();
     setEntries(data);
   }
