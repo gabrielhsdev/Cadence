@@ -56,6 +56,10 @@ const api = {
       ipcRenderer.invoke('settings:get-active-list'),
     setActiveList: (list: string): Promise<void> =>
       ipcRenderer.invoke('settings:set-active-list', list),
+    getMaxInterval: (): Promise<number> =>
+      ipcRenderer.invoke('settings:get-max-interval'),
+    setMaxInterval: (days: number): Promise<void> =>
+      ipcRenderer.invoke('settings:set-max-interval', days),
   },
   forecast: {
     getMonth: (month: string): Promise<MonthForecast> =>

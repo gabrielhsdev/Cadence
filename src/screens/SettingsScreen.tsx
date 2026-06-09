@@ -1,26 +1,37 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { DifficultySettings, TopicSetting } from '../types';
+import { DifficultySettings, MAX_INTERVAL_NO_CAP, TopicSetting } from '../types';
 import { api } from '../renderer/api';
+
+const CAP_OPTIONS = [
+  { label: 'No cap', value: MAX_INTERVAL_NO_CAP },
+  { label: '30 days', value: 30 },
+  { label: '45 days', value: 45 },
+  { label: '60 days', value: 60 },
+  { label: '90 days', value: 90 },
+];
 
 export default function SettingsScreen(): React.ReactElement {
   const [topics, setTopics] = useState<TopicSetting[]>([]);
   const [difficulties, setDifficulties] = useState<DifficultySettings>({ easy: false, medium: true, hard: true });
   const [lists, setLists] = useState<string[]>([]);
   const [activeList, setActiveList] = useState<string>('');
+  const [maxInterval, setMaxInterval] = useState<number>(MAX_INTERVAL_NO_CAP);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
-    const [t, d, ls, al] = await Promise.all([
+    const [t, d, ls, al, mi] = await Promise.all([
       api.settings.getTopics(),
       api.settings.getDifficulties(),
       api.settings.getLists(),
       api.settings.getActiveList(),
+      api.settings.getMaxInterval(),
     ]);
     setTopics(t);
     setDifficulties(d);
     setLists(ls);
     setActiveList(al);
+    setMaxInterval(mi);
     setLoading(false);
   }, []);
 
@@ -41,6 +52,11 @@ export default function SettingsScreen(): React.ReactElement {
     setDifficulties(updated);
     await api.settings.updateDifficulties(updated);
     setSaving(false);
+  }
+
+  async function handleMaxIntervalChange(days: number): Promise<void> {
+    setMaxInterval(days);
+    await api.settings.setMaxInterval(days);
   }
 
   async function handleActiveListChange(list: string): Promise<void> {
@@ -109,11 +125,31 @@ export default function SettingsScreen(): React.ReactElement {
 
       <div className="settings-section">
         <div className="settings-section-title">Review Scheduling</div>
-        <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+        <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 8 }}>
           Review timing is handled automatically by <strong>FSRS</strong>, which learns
           each problem&apos;s memory strength from your ratings and schedules the next review
           for when you&apos;re about to forget it. The more confidently you rate a problem, the
           longer until it returns. See the <strong>Forecast</strong> tab for what&apos;s coming up.
+        </div>
+        <div className="settings-row">
+          <span className="settings-row-label">Max interval</span>
+          <div className="settings-row-controls">
+            <select
+              className="number-input"
+              style={{ width: 'auto', minWidth: 120 }}
+              value={String(maxInterval)}
+              onChange={(e) => handleMaxIntervalChange(Number(e.target.value))}
+            >
+              {CAP_OPTIONS.map((o) => (
+                <option key={o.value} value={String(o.value)}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 4 }}>
+          Cap how far out a mastered problem can be scheduled, so nothing disappears for too
+          long. Lower = more upkeep but stays fresher (~problems ÷ days per day). Lowering it
+          pulls far-future problems back into the window.
         </div>
       </div>
 

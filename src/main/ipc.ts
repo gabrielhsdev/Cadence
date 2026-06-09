@@ -17,7 +17,13 @@ import {
   importReviews,
   getProblemsReviewedToday,
 } from '../db/reviews';
-import { getProblemState, upsertProblemState, getMonthForecast, getOverdueProblems } from '../db/state';
+import {
+  getProblemState,
+  upsertProblemState,
+  getMonthForecast,
+  getOverdueProblems,
+  reclampDueDates,
+} from '../db/state';
 import { ensureProblemStates } from './backfill';
 import { rowsToCsv, csvToRows, CsvRow } from './csv';
 import {
@@ -38,6 +44,8 @@ import {
   ensureTopicSettingsForAllProblems,
   getActiveList,
   setActiveList,
+  getMaxIntervalDays,
+  setMaxIntervalDays,
 } from '../db/settings';
 import { getOrGenerateQueue, generateQueue, refreshQueueItem, addMoreForTopic } from './generator';
 import { applyRating } from './scheduler';
@@ -71,6 +79,8 @@ type Channel =
   | 'settings:get-lists'
   | 'settings:get-active-list'
   | 'settings:set-active-list'
+  | 'settings:get-max-interval'
+  | 'settings:set-max-interval'
   | 'forecast:get-month'
   | 'forecast:get-overdue'
   | 'history:get-all'
@@ -157,7 +167,7 @@ function registerReviewHandlers(db: Database.Database): void {
     // Advance the FSRS state from the problem's prior state (null = never
     // reviewed), then persist the review and the new state together.
     const prev = getProblemState(db, payload.problem_id) ?? null;
-    const next = applyRating(prev, payload.rating, today);
+    const next = applyRating(prev, payload.rating, today, getMaxIntervalDays(db));
     db.transaction(() => {
       insertReview(db, payload.problem_id, payload.rating, payload.notes, today, next.due);
       upsertProblemState(db, { problem_id: payload.problem_id, ...next });
@@ -198,6 +208,14 @@ function registerSettingsHandlers(db: Database.Database): void {
   handle('settings:set-active-list', async (_event, list: string) =>
     setActiveList(db, list)
   );
+
+  handle('settings:get-max-interval', async () => getMaxIntervalDays(db));
+
+  // Persist the cap, then pull any now-too-far due dates back into the window.
+  handle('settings:set-max-interval', async (_event, days: number) => {
+    setMaxIntervalDays(db, days);
+    reclampDueDates(db, todayIso(), days);
+  });
 }
 
 function registerHistoryHandlers(db: Database.Database): void {
