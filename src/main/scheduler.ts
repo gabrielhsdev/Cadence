@@ -8,8 +8,8 @@
  * To swap algorithms again, replace this file: `applyRating` is the only place a
  * next-review date and memory state are ever computed.
  */
-import { fsrs, createEmptyCard, Rating, State, type Card, type Grade } from 'ts-fsrs';
-import { SchedulerState } from '../types';
+import { fsrs, createEmptyCard, Rating, State, type Card, type Grade, type FSRS } from 'ts-fsrs';
+import { MAX_INTERVAL_NO_CAP, SchedulerState } from '../types';
 
 // Desired probability of recall at review time. Lower = fewer, later reviews;
 // higher = more, earlier reviews. FSRS's standard default is 0.9.
@@ -30,11 +30,22 @@ export const RATING_TO_GRADE: Record<number, Grade> = {
   5: Rating.Easy,
 };
 
-const engine = fsrs({
-  request_retention: REQUEST_RETENTION,
-  enable_fuzz: false, // deterministic intervals (reproducible + testable)
-  enable_short_term: false, // schedule in whole days; skip sub-day learning steps
-});
+// One FSRS engine per max-interval cap, built lazily and cached. The cap clamps
+// the scheduled interval only (stability still grows internally).
+const engines = new Map<number, FSRS>();
+function engineFor(maxIntervalDays: number): FSRS {
+  let engine = engines.get(maxIntervalDays);
+  if (!engine) {
+    engine = fsrs({
+      request_retention: REQUEST_RETENTION,
+      enable_fuzz: false, // deterministic intervals (reproducible + testable)
+      enable_short_term: false, // schedule in whole days; skip sub-day learning steps
+      maximum_interval: maxIntervalDays,
+    });
+    engines.set(maxIntervalDays, engine);
+  }
+  return engine;
+}
 
 // ── SchedulerState ⇄ ts-fsrs Card ────────────────────────────────────────────
 
@@ -84,13 +95,14 @@ function fromCard(c: Card): SchedulerState {
 export function applyRating(
   prev: SchedulerState | null,
   rating: number,
-  todayIso: string
+  todayIso: string,
+  maxIntervalDays: number = MAX_INTERVAL_NO_CAP
 ): SchedulerState {
   const grade = RATING_TO_GRADE[rating];
   if (grade === undefined) throw new Error(`No FSRS grade mapping for rating: ${rating}`);
   const now = parseDay(todayIso);
   const card: Card = prev ? toCard(prev) : createEmptyCard(now);
-  const { card: next } = engine.next(card, now, grade);
+  const { card: next } = engineFor(maxIntervalDays).next(card, now, grade);
   return fromCard(next);
 }
 
@@ -100,9 +112,10 @@ export function applyRating(
  * pre-FSRS or imported reviews.
  */
 export function replayHistory(
-  reviews: { rating: number; reviewed_at: string }[]
+  reviews: { rating: number; reviewed_at: string }[],
+  maxIntervalDays: number = MAX_INTERVAL_NO_CAP
 ): SchedulerState | null {
   let state: SchedulerState | null = null;
-  for (const r of reviews) state = applyRating(state, r.rating, r.reviewed_at);
+  for (const r of reviews) state = applyRating(state, r.rating, r.reviewed_at, maxIntervalDays);
   return state;
 }

@@ -4,7 +4,8 @@ import Database from 'better-sqlite3';
 import { initSchema } from './schema';
 import { addProblem } from './problems';
 import { insertReview } from './reviews';
-import { getProblemState, upsertProblemState, getMonthForecast, getOverdueProblems } from './state';
+import { getProblemState, upsertProblemState, getMonthForecast, getOverdueProblems, reclampDueDates } from './state';
+import { addDaysIso } from '../dateUtils';
 import { ensureProblemStates } from '../main/backfill';
 import { applyRating } from '../main/scheduler';
 import { NewProblem, ProblemState } from '../types';
@@ -107,4 +108,53 @@ test('getOverdueProblems lists due-before-today, most overdue first', () => {
   assert.equal(list[0].title, 'B', 'oldest due first');
   assert.equal(list[0].due, '2026-05-20');
   assert.equal(list[1].title, 'A');
+});
+
+function setState(db: Database.Database, id: number, due: string, lastReviewed: string): void {
+  upsertProblemState(db, {
+    problem_id: id,
+    stability: 100,
+    difficulty: 5,
+    due,
+    last_reviewed_at: lastReviewed,
+    scheduled_days: 100,
+    reps: 3,
+    lapses: 0,
+    state: 2,
+  });
+}
+
+test('reclampDueDates pulls far-future dues into the window, stalest first', () => {
+  const db = freshDb();
+  const today = '2026-06-08';
+  // Three problems scheduled far out, with different last-review dates.
+  const stale = addProblem(db, makeProblem({ title: 'Stale' }));
+  const mid = addProblem(db, makeProblem({ title: 'Mid' }));
+  const recent = addProblem(db, makeProblem({ title: 'Recent' }));
+  setState(db, stale.id, '2030-01-01', '2026-01-01'); // oldest review
+  setState(db, mid.id, '2030-01-01', '2026-03-01');
+  setState(db, recent.id, '2030-01-01', '2026-05-01'); // newest review
+  // One already within a 10-day window — must be left untouched.
+  const near = addProblem(db, makeProblem({ title: 'Near' }));
+  setState(db, near.id, '2026-06-10', '2026-06-05');
+
+  reclampDueDates(db, today, 10);
+
+  const cap = addDaysIso(today, 10);
+  for (const p of [stale, mid, recent]) {
+    assert.ok(getProblemState(db, p.id)!.due <= cap, 'pulled within the cap window');
+  }
+  // perDay = ceil(3/10) = 1 → offsets 0,1,2, stalest first.
+  assert.equal(getProblemState(db, stale.id)!.due, today, 'stalest comes back first (today)');
+  assert.equal(getProblemState(db, mid.id)!.due, addDaysIso(today, 1));
+  assert.equal(getProblemState(db, recent.id)!.due, addDaysIso(today, 2));
+  assert.equal(getProblemState(db, near.id)!.due, '2026-06-10', 'in-window due left untouched');
+});
+
+test('reclampDueDates with no cap is a no-op', () => {
+  const db = freshDb();
+  const p = addProblem(db, makeProblem());
+  setState(db, p.id, '2030-01-01', '2026-01-01');
+  reclampDueDates(db, '2026-06-08', 36500);
+  assert.equal(getProblemState(db, p.id)!.due, '2030-01-01', 'far-future due survives no-cap');
 });

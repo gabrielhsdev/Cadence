@@ -90,5 +90,12 @@ export function initSchema(db: Database.Database): void {
       lapses           INTEGER NOT NULL DEFAULT 0,
       state            INTEGER NOT NULL DEFAULT 0
     );
+
+    -- Generic key/value store for scalar app preferences the main process reads
+    -- (e.g. max_interval_days). Add new keys here instead of new tables.
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
   `);
 }

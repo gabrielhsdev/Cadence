@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { DifficultySettings, TopicSetting } from '../types';
+import { DifficultySettings, MAX_INTERVAL_NO_CAP, TopicSetting } from '../types';
 
 export function getTopicSettings(db: Database.Database): TopicSetting[] {
   return db
@@ -69,6 +69,36 @@ export function updateDifficultySettings(
   db.prepare(`
     UPDATE difficulty_settings SET easy = ?, medium = ?, hard = ? WHERE id = 1
   `).run(settings.easy ? 1 : 0, settings.medium ? 1 : 0, settings.hard ? 1 : 0);
+}
+
+// ── Generic key/value app settings ──────────────────────────────────────────
+
+export function getAppSetting(db: Database.Database, key: string): string | undefined {
+  const row = db.prepare('SELECT value FROM app_settings WHERE key = ?').get(key) as
+    | { value: string }
+    | undefined;
+  return row?.value;
+}
+
+export function setAppSetting(db: Database.Database, key: string, value: string): void {
+  db.prepare(`
+    INSERT INTO app_settings (key, value)
+    VALUES (?, ?)
+    ON CONFLICT (key) DO UPDATE SET value = excluded.value
+  `).run(key, value);
+}
+
+const MAX_INTERVAL_KEY = 'max_interval_days';
+
+// Max days a review can be scheduled out. Defaults to "no cap" when unset.
+export function getMaxIntervalDays(db: Database.Database): number {
+  const raw = getAppSetting(db, MAX_INTERVAL_KEY);
+  const n = raw === undefined ? NaN : Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : MAX_INTERVAL_NO_CAP;
+}
+
+export function setMaxIntervalDays(db: Database.Database, days: number): void {
+  setAppSetting(db, MAX_INTERVAL_KEY, String(days));
 }
 
 // The active problem list the daily queue draws from. '' = All Problems.

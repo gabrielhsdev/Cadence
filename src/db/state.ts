@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3';
 import { MonthForecast, OverdueProblem, Problem, ProblemState } from '../types';
+import { addDaysIso } from '../dateUtils';
 
 export function getProblemState(db: Database.Database, problemId: number): ProblemState | undefined {
   return db
@@ -50,6 +51,33 @@ export function getOverdueProblems(db: Database.Database, today: string): Overdu
       ORDER BY ps.due ASC, p.topic, p.title
     `)
     .all(today) as OverdueProblem[];
+}
+
+// When the max-interval cap is lowered, pull every problem whose due is beyond
+// (today + cap) back into the [today, today+cap] window — stalest (oldest last
+// review) first, spread evenly (~count/cap per day) to avoid a single-day spike
+// or an overdue flood. Tighten-only: never pushes a due date further out, and
+// only touches `due` (stability is left intact, mirroring FSRS's own cap). A
+// no-cap value is a no-op since nothing is scheduled ~100 years out.
+export function reclampDueDates(db: Database.Database, today: string, maxIntervalDays: number): void {
+  const capDate = addDaysIso(today, maxIntervalDays);
+  const rows = db
+    .prepare(`
+      SELECT problem_id FROM problem_state
+      WHERE due > ?
+      ORDER BY last_reviewed_at ASC, problem_id ASC
+    `)
+    .all(capDate) as { problem_id: number }[];
+  if (rows.length === 0) return;
+
+  const perDay = Math.ceil(rows.length / maxIntervalDays);
+  const update = db.prepare('UPDATE problem_state SET due = ? WHERE problem_id = ?');
+  db.transaction(() => {
+    rows.forEach((row, i) => {
+      const offset = Math.min(maxIntervalDays, Math.floor(i / perDay));
+      update.run(addDaysIso(today, offset), row.problem_id);
+    });
+  })();
 }
 
 function firstOfNextMonth(month: string): string {

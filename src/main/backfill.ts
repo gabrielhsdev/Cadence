@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import { getProblemIdsNeedingState, upsertProblemState } from '../db/state';
 import { getReviewsForProblem } from '../db/reviews';
+import { getMaxIntervalDays } from '../db/settings';
 import { replayHistory } from './scheduler';
 
 /**
@@ -12,10 +13,11 @@ import { replayHistory } from './scheduler';
 export function ensureProblemStates(db: Database.Database): void {
   const ids = getProblemIdsNeedingState(db);
   if (ids.length === 0) return;
+  const maxInterval = getMaxIntervalDays(db);
   const tx = db.transaction(() => {
     for (const problemId of ids) {
       const reviews = getReviewsForProblem(db, problemId);
-      const state = replayHistory(reviews);
+      const state = replayHistory(reviews, maxInterval);
       if (state) upsertProblemState(db, { problem_id: problemId, ...state });
     }
   });

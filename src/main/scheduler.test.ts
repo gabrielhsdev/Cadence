@@ -59,6 +59,18 @@ test('scheduling is deterministic (fuzz disabled)', () => {
   assert.deepEqual(applyRating(null, 3, TODAY), applyRating(null, 3, TODAY));
 });
 
+test('maxIntervalDays bounds the interval, unlike uncapped growth', () => {
+  let capped = applyRating(null, 4, TODAY, 30);
+  let uncapped = applyRating(null, 4, TODAY);
+  for (let i = 0; i < 6; i++) {
+    capped = applyRating(capped, 4, capped.due, 30);
+    uncapped = applyRating(uncapped, 4, uncapped.due);
+  }
+  // ts-fsrs may overshoot the nominal cap by ~2 days; it still plateaus.
+  assert.ok(capped.scheduled_days <= 33, `capped interval ${capped.scheduled_days} stays near 30`);
+  assert.ok(uncapped.scheduled_days > 300, `uncapped interval ${uncapped.scheduled_days} keeps growing`);
+});
+
 test('throws on a rating with no grade mapping', () => {
   assert.throws(() => applyRating(null, 9, TODAY), /No FSRS grade mapping/);
 });

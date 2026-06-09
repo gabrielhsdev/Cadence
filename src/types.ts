@@ -1,6 +1,10 @@
 export type Difficulty = 'Easy' | 'Medium' | 'Hard';
 export type ReviewStatus = 'pending' | 'completed' | 'skipped';
 
+// Sentinel "no cap" value for the max review interval (~100 years). Shared by the
+// scheduler (default), the settings store, and the Settings dropdown.
+export const MAX_INTERVAL_NO_CAP = 36500;
+
 export interface Problem {
   id: number;
   title: string;
