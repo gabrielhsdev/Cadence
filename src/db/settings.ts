@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { DifficultySettings, MAX_INTERVAL_NO_CAP, TopicSetting } from '../types';
+import { DEFAULT_MAX_INTERVAL_DAYS, DifficultySettings, TopicSetting } from '../types';
 
 export function getTopicSettings(db: Database.Database): TopicSetting[] {
   return db
@@ -90,11 +90,12 @@ export function setAppSetting(db: Database.Database, key: string, value: string)
 
 const MAX_INTERVAL_KEY = 'max_interval_days';
 
-// Max days a review can be scheduled out. Defaults to "no cap" when unset.
+// Max days a review can be scheduled out. Defaults to DEFAULT_MAX_INTERVAL_DAYS
+// when the user hasn't chosen one.
 export function getMaxIntervalDays(db: Database.Database): number {
   const raw = getAppSetting(db, MAX_INTERVAL_KEY);
   const n = raw === undefined ? NaN : Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : MAX_INTERVAL_NO_CAP;
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_MAX_INTERVAL_DAYS;
 }
 
 export function setMaxIntervalDays(db: Database.Database, days: number): void {

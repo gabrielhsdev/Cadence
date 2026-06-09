@@ -2,8 +2,12 @@ export type Difficulty = 'Easy' | 'Medium' | 'Hard';
 export type ReviewStatus = 'pending' | 'completed' | 'skipped';
 
 // Sentinel "no cap" value for the max review interval (~100 years). Shared by the
-// scheduler (default), the settings store, and the Settings dropdown.
+// scheduler, the settings store, and the Settings dropdown.
 export const MAX_INTERVAL_NO_CAP = 36500;
+
+// Default max review interval (days) when the user hasn't chosen one — keeps
+// mastered problems resurfacing roughly every ~6 weeks instead of drifting away.
+export const DEFAULT_MAX_INTERVAL_DAYS = 45;
 
 export interface Problem {
   id: number;

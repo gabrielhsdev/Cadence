@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { DifficultySettings, MAX_INTERVAL_NO_CAP, TopicSetting } from '../types';
+import { DEFAULT_MAX_INTERVAL_DAYS, DifficultySettings, MAX_INTERVAL_NO_CAP, TopicSetting } from '../types';
 import { api } from '../renderer/api';
 
 const CAP_OPTIONS = [
   { label: 'No cap', value: MAX_INTERVAL_NO_CAP },
   { label: '30 days', value: 30 },
-  { label: '45 days', value: 45 },
+  { label: `45 days${DEFAULT_MAX_INTERVAL_DAYS === 45 ? ' (default)' : ''}`, value: 45 },
   { label: '60 days', value: 60 },
   { label: '90 days', value: 90 },
 ];
