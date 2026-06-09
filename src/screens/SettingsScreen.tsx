@@ -69,7 +69,7 @@ export default function SettingsScreen(): React.ReactElement {
   return (
     <>
       <div style={{ marginBottom: 28 }}>
-        <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>Settings</div>
+        <div className="screen-title" style={{ marginBottom: 4 }}>Settings</div>
         <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>
           Configure which topics and difficulties appear in your daily queue.
         </div>
@@ -77,7 +77,7 @@ export default function SettingsScreen(): React.ReactElement {
 
       <div className="settings-section">
         <div className="settings-section-title">Problem List</div>
-        <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 8 }}>
+        <div className="settings-hint" style={{ marginBottom: 8 }}>
           Which list the daily queue draws from. Changes apply to your next day or when you
           reset today — your current queue stays as is.
         </div>
@@ -125,7 +125,7 @@ export default function SettingsScreen(): React.ReactElement {
 
       <div className="settings-section">
         <div className="settings-section-title">Review Scheduling</div>
-        <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 8 }}>
+        <div className="settings-hint" style={{ marginBottom: 8 }}>
           Review timing is handled automatically by <strong>FSRS</strong>, which learns
           each problem&apos;s memory strength from your ratings and schedules the next review
           for when you&apos;re about to forget it. The more confidently you rate a problem, the
@@ -146,7 +146,7 @@ export default function SettingsScreen(): React.ReactElement {
             </select>
           </div>
         </div>
-        <div style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 4 }}>
+        <div className="settings-hint" style={{ marginTop: 4 }}>
           Cap how far out a mastered problem can be scheduled, so nothing disappears for too
           long. Lower = more upkeep but stays fresher (~problems ÷ days per day). Lowering it
           pulls far-future problems back into the window.

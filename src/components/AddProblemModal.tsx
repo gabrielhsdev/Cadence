@@ -63,8 +63,7 @@ export default function AddProblemModal({ topics, lists, onAdd, onClose }: Props
           <div>
             <span className="modal-label">Title *</span>
             <input
-              className="notes-input"
-              style={{ minHeight: 'unset', height: 36, resize: 'none' }}
+              className="notes-input input-line"
               placeholder="e.g. Word Ladder"
               value={form.title}
               onChange={(e) => setField('title', e.target.value)}
@@ -75,8 +74,7 @@ export default function AddProblemModal({ topics, lists, onAdd, onClose }: Props
           <div>
             <span className="modal-label">Topic *</span>
             <input
-              className="notes-input"
-              style={{ minHeight: 'unset', height: 36, resize: 'none' }}
+              className="notes-input input-line"
               list="topics-list"
               placeholder="e.g. Graphs"
               value={form.topic}
@@ -108,8 +106,7 @@ export default function AddProblemModal({ topics, lists, onAdd, onClose }: Props
           <div>
             <span className="modal-label">LeetCode URL</span>
             <input
-              className="notes-input"
-              style={{ minHeight: 'unset', height: 36, resize: 'none' }}
+              className="notes-input input-line"
               placeholder="https://leetcode.com/problems/…"
               value={form.leetcode_url}
               onChange={(e) => setField('leetcode_url', e.target.value)}
@@ -120,8 +117,7 @@ export default function AddProblemModal({ topics, lists, onAdd, onClose }: Props
           <div>
             <span className="modal-label">List *</span>
             <input
-              className="notes-input"
-              style={{ minHeight: 'unset', height: 36, resize: 'none' }}
+              className="notes-input input-line"
               list="lists-list"
               placeholder="e.g. NeetCode 150"
               value={form.list_name}

@@ -178,7 +178,7 @@ export default function ForecastScreen(): React.ReactElement {
     <>
       <div className="queue-header" style={{ marginBottom: 16 }}>
         <div>
-          <div style={{ fontWeight: 600, fontSize: 15 }}>Forecast</div>
+          <div className="screen-title">Forecast</div>
           <div className="queue-date">Reviews due ahead · problems solved in the past</div>
         </div>
       </div>

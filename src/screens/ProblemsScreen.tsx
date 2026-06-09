@@ -59,7 +59,7 @@ export default function ProblemsScreen(): React.ReactElement {
     <>
       <div className="queue-header" style={{ marginBottom: 16 }}>
         <div>
-          <div style={{ fontWeight: 600, fontSize: 15 }}>Problem Library</div>
+          <div className="screen-title">Problem Library</div>
           <div className="queue-date">{problems.length} problems across {topics.length} topics</div>
         </div>
         <button className="btn btn-primary" onClick={() => setShowForm(true)}>
@@ -68,8 +68,8 @@ export default function ProblemsScreen(): React.ReactElement {
       </div>
 
       <input
-        className="notes-input"
-        style={{ minHeight: 'unset', height: 36, marginBottom: 20, resize: 'none' }}
+        className="notes-input input-line"
+        style={{ marginBottom: 20 }}
         placeholder="Search by title, topic, or list…"
         value={search}
         onChange={(e) => setSearch(e.target.value)}

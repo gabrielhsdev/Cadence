@@ -47,8 +47,8 @@ export default function AddToQueueModal({ onAdd, onClose }: Props): React.ReactE
 
         <input
           ref={inputRef}
-          className="notes-input"
-          style={{ minHeight: 'unset', height: 36, marginBottom: 12, resize: 'none' }}
+          className="notes-input input-line"
+          style={{ marginBottom: 12 }}
           placeholder="Search by title or topic…"
           value={query}
           onChange={(e) => { setQuery(e.target.value); setNotice(''); }}

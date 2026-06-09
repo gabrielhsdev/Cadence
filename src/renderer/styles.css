@@ -798,3 +798,42 @@ html, body {
   border-bottom: 1px solid var(--border);
   font-size: 13px;
 }
+
+/* ── Shared UI utility classes (extracted from repeated inline styles) ── */
+
+/* Bold heading at the top of each screen */
+.screen-title {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+/* Single-line variant of .notes-input (which is otherwise a multi-line textarea) */
+.input-line {
+  min-height: unset;
+  height: 36px;
+  resize: none;
+}
+
+/* Muted helper text under a settings section heading */
+.settings-hint {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* Transient toast notification (bottom-center) */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #fff;
+  padding: 9px 18px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 500;
+  z-index: 200;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.toast-ok { background: var(--success); }
+.toast-err { background: var(--danger); }

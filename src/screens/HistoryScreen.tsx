@@ -89,30 +89,14 @@ export default function HistoryScreen(): React.ReactElement {
   return (
     <>
       {notice && (
-        <div
-          style={{
-            position: 'fixed',
-            bottom: 24,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            background: notice.ok ? 'var(--success)' : 'var(--danger)',
-            color: '#fff',
-            padding: '9px 18px',
-            borderRadius: 'var(--radius)',
-            fontSize: 13,
-            fontWeight: 500,
-            zIndex: 200,
-            pointerEvents: 'none',
-            whiteSpace: 'nowrap',
-          }}
-        >
+        <div className={`toast ${notice.ok ? 'toast-ok' : 'toast-err'}`}>
           {notice.text}
         </div>
       )}
 
       <div className="queue-header" style={{ marginBottom: 16 }}>
         <div>
-          <div style={{ fontWeight: 600, fontSize: 15 }}>Review History</div>
+          <div className="screen-title">Review History</div>
           <div className="queue-date">
             {entries.length} review{entries.length !== 1 ? 's' : ''} total
           </div>
@@ -132,8 +116,8 @@ export default function HistoryScreen(): React.ReactElement {
 
       {entries.length > 0 && (
         <input
-          className="notes-input"
-          style={{ minHeight: 'unset', height: 36, marginBottom: 16, resize: 'none' }}
+          className="notes-input input-line"
+          style={{ marginBottom: 16 }}
           placeholder="Search by problem or topic…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}

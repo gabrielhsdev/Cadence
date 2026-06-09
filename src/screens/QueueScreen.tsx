@@ -179,7 +179,7 @@ export default function QueueScreen(): React.ReactElement {
     <>
       <div className="queue-header">
         <div>
-          <div style={{ fontWeight: 600, fontSize: 15 }}>Today's Queue</div>
+          <div className="screen-title">Today's Queue</div>
           <div className="queue-date">{today}</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
