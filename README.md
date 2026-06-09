@@ -253,8 +253,9 @@ run by [`connection.ts`](src/db/connection.ts) with `CREATE TABLE IF NOT EXISTS`
 opening the DB is enough to guarantee the schema exists. Pragmas set on open:
 `journal_mode = WAL` and `foreign_keys = ON`.
 
-There are **10 tables**, in two groups: **content** (what problems exist, what you've
-done, and each problem's scheduling state) and **config** (your settings).
+There are **11 tables**, in two groups: **content** (what problems exist, what you've
+done, and each problem's scheduling state) and **config** (your settings, including a
+generic `app_settings` key/value store).
 
 ## Tables
 
@@ -361,6 +362,16 @@ A single row (`id = 1`) holding `active_list` — the list the daily queue draws
 |---|---|
 | `id` | always 1 (single-row table) |
 | `active_list` | selected list name, or `''` for all |
+
+### `app_settings` — generic key/value config
+A small key/value store for scalar preferences the main process reads. Currently holds
+`max_interval_days` (the review-interval cap). Add new scalar settings as keys here rather
+than new tables.
+
+| Column | Meaning |
+|---|---|
+| `key` | setting name (primary key), e.g. `max_interval_days` |
+| `value` | its value, stored as text |
 
 ## How they connect
 
@@ -679,6 +690,10 @@ that one file — nothing else in the codebase computes scheduling.
   Edited on the Settings screen; consumed by the generator.
 - **Difficulty settings** (`difficulty_settings`): a single global row toggling
   Easy/Medium/Hard. Defaults: Easy off, Medium on, Hard on.
+- **Max interval** (`app_settings.max_interval_days`): a dropdown on the Settings screen
+  capping how far out a mastered problem can be scheduled (No cap / 30 / 45 / 60 / 90 days).
+  Lowering it runs a tighten-only re-clamp (`reclampDueDates`) that spreads far-future
+  problems back into the window, stalest first. (ts-fsrs may overshoot the cap by ~2 days.)
 - **Review scheduling**: handled automatically by FSRS (see
   [How a review updates the schedule](#how-a-review-updates-the-schedule)) — there are no
   user-editable intervals. The Settings screen just explains this and points at the
