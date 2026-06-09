@@ -16,13 +16,19 @@ const STATUS_ICON: Record<string, string> = {
   skipped: '⏭',
 };
 
+const STATUS_COLOR: Record<string, string> = {
+  pending: 'var(--text-muted)',
+  completed: 'var(--success)',
+  skipped: 'var(--text-dim)',
+};
+
 export default function QueueItem({ item, onOpen, onReview, onRefresh, onSkip, refreshing }: Props): React.ReactElement {
   const isPending = item.status === 'pending';
   const icon = STATUS_ICON[item.status] ?? '○';
 
   return (
     <div className={`queue-item item-status-${item.status}`}>
-      <span className="status-icon" style={{ color: item.status === 'completed' ? 'var(--success)' : item.status === 'skipped' ? 'var(--text-dim)' : 'var(--text-muted)' }}>
+      <span className="status-icon" style={{ color: STATUS_COLOR[item.status] ?? 'var(--text-muted)' }}>
         {icon}
       </span>
 

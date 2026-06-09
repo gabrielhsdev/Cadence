@@ -20,6 +20,13 @@ export default tseslint.config(
       // tsconfig already enforces noUnusedLocals/Parameters; avoid a duplicate
       // (and let leading-underscore args be intentionally unused).
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+
+      // Simplicity guard-rails — calibrated above today's code so they catch
+      // *new* complexity rather than flagging the current tree.
+      'no-nested-ternary': 'error',
+      'max-depth': ['error', 4],
+      'max-nested-callbacks': ['error', 3],
+      complexity: ['error', 18],
     },
   }
 );

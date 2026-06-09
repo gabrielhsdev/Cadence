@@ -15,6 +15,12 @@ function monthKey(year: number, monthIndex: number): string {
   return `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
 }
 
+// Calendar cell tint: past activity is green (done), upcoming due is accent (to-do).
+function cellBackground(hasItems: boolean, isPast: boolean): string | undefined {
+  if (!hasItems) return undefined;
+  return isPast ? 'rgba(61, 189, 110, 0.22)' : 'rgba(94, 155, 255, 0.22)';
+}
+
 function openProblem(p: Problem): void {
   if (p.leetcode_url) api.shell.openUrl(p.leetcode_url);
 }
@@ -41,28 +47,36 @@ function DayDetail({ day, isPast, isToday, dateLabel }: {
 }): React.ReactElement {
   const reviewed = day?.reviewed ?? [];
   const due = day?.due ?? [];
-  return (
-    <>
-      <div className="forecast-detail-title">{dateLabel}{isToday && ' · today'}</div>
-      {isPast ? (
-        reviewed.length === 0 ? (
-          <div className="forecast-detail-empty">Nothing solved this day.</div>
-        ) : (
-          reviewed.map((p, i) => (
-            <ProblemRow
-              key={i}
-              problem={p}
-              trailing={<span className="cell-muted" style={{ marginLeft: 'auto' }}>{p.rating} — {ratingLabel(p.rating)}</span>}
-            />
-          ))
-        )
-      ) : due.length === 0 ? (
+
+  let body: React.ReactNode;
+  if (isPast) {
+    body =
+      reviewed.length === 0 ? (
+        <div className="forecast-detail-empty">Nothing solved this day.</div>
+      ) : (
+        reviewed.map((p, i) => (
+          <ProblemRow
+            key={i}
+            problem={p}
+            trailing={<span className="cell-muted" style={{ marginLeft: 'auto' }}>{p.rating} — {ratingLabel(p.rating)}</span>}
+          />
+        ))
+      );
+  } else {
+    body =
+      due.length === 0 ? (
         <div className="forecast-detail-empty">
           Nothing scheduled.{isToday && ' New problems are pulled in via the Today tab.'}
         </div>
       ) : (
         due.map((p, i) => <ProblemRow key={i} problem={p} />)
-      )}
+      );
+  }
+
+  return (
+    <>
+      <div className="forecast-detail-title">{dateLabel}{isToday && ' · today'}</div>
+      {body}
     </>
   );
 }
@@ -224,12 +238,7 @@ export default function ForecastScreen(): React.ReactElement {
                 const isPast = iso < todayIso;
                 const count = isPast ? revN : dueN;
                 const hasItems = count > 0;
-                // Past activity is green (done); upcoming due is accent (to-do).
-                const bg = !hasItems
-                  ? undefined
-                  : isPast
-                    ? 'rgba(61, 189, 110, 0.22)'
-                    : 'rgba(94, 155, 255, 0.22)';
+                const bg = cellBackground(hasItems, isPast);
                 return (
                   <div
                     key={ci}
