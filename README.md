@@ -693,9 +693,12 @@ that one file — nothing else in the codebase computes scheduling.
 - **Max interval** (`app_settings.max_interval_days`): a dropdown on the Settings screen
   capping how far out a mastered problem can be scheduled (No cap / 30 / 45 / 60 / 90 days).
   **Defaults to 45 days** (`DEFAULT_MAX_INTERVAL_DAYS`) when unset, so mastered problems
-  resurface roughly every ~6 weeks rather than drifting away. Lowering it runs a tighten-only
-  re-clamp (`reclampDueDates`) that spreads far-future problems back into the window, stalest
-  first. (ts-fsrs may overshoot the cap by ~2 days.)
+  resurface roughly every ~6 weeks rather than drifting away. `reclampDueDates` enforces it by
+  recomputing each problem's due as `last_reviewed_at + min(its interval, cap)` — so a
+  recently-reviewed problem lands ~cap days out and one reviewed long ago becomes overdue. It
+  runs on every cap change AND on startup (idempotent + self-healing), and keeps each problem's
+  latest review row (History's "next due") in sync with the live due. Raising the cap back to
+  "no cap" restores the full FSRS interval. (ts-fsrs may overshoot the cap by ~2 days.)
 - **Review scheduling**: handled automatically by FSRS (see
   [How a review updates the schedule](#how-a-review-updates-the-schedule)) — there are no
   user-editable intervals. The Settings screen just explains this and points at the

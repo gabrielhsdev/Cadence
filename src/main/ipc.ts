@@ -211,10 +211,10 @@ function registerSettingsHandlers(db: Database.Database): void {
 
   handle('settings:get-max-interval', async () => getMaxIntervalDays(db));
 
-  // Persist the cap, then pull any now-too-far due dates back into the window.
+  // Persist the cap, then re-enforce it on existing due dates.
   handle('settings:set-max-interval', async (_event, days: number) => {
     setMaxIntervalDays(db, days);
-    reclampDueDates(db, todayIso(), days);
+    reclampDueDates(db, days);
   });
 }
 
@@ -312,6 +312,9 @@ export function registerIpcHandlers(): void {
   backfillProblemLists(db);
   // Backfill FSRS state for any pre-existing / imported review history.
   ensureProblemStates(db);
+  // Enforce the current max-interval cap on existing due dates (idempotent,
+  // self-heals any rows left inconsistent by an earlier scheduler version).
+  reclampDueDates(db, getMaxIntervalDays(db));
 
   registerQueueHandlers(db);
   registerReviewHandlers(db);

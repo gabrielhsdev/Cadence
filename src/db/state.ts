@@ -1,6 +1,5 @@
 import Database from 'better-sqlite3';
 import { MonthForecast, OverdueProblem, Problem, ProblemState } from '../types';
-import { addDaysIso } from '../dateUtils';
 
 export function getProblemState(db: Database.Database, problemId: number): ProblemState | undefined {
   return db
@@ -53,30 +52,28 @@ export function getOverdueProblems(db: Database.Database, today: string): Overdu
     .all(today) as OverdueProblem[];
 }
 
-// When the max-interval cap is lowered, pull every problem whose due is beyond
-// (today + cap) back into the [today, today+cap] window — stalest (oldest last
-// review) first, spread evenly (~count/cap per day) to avoid a single-day spike
-// or an overdue flood. Tighten-only: never pushes a due date further out, and
-// only touches `due` (stability is left intact, mirroring FSRS's own cap). A
-// no-cap value is a no-op since nothing is scheduled ~100 years out.
-export function reclampDueDates(db: Database.Database, today: string, maxIntervalDays: number): void {
-  const capDate = addDaysIso(today, maxIntervalDays);
-  const rows = db
-    .prepare(`
-      SELECT problem_id FROM problem_state
-      WHERE due > ?
-      ORDER BY last_reviewed_at ASC, problem_id ASC
-    `)
-    .all(capDate) as { problem_id: number }[];
-  if (rows.length === 0) return;
-
-  const perDay = Math.ceil(rows.length / maxIntervalDays);
-  const update = db.prepare('UPDATE problem_state SET due = ? WHERE problem_id = ?');
+// Enforce the max-interval cap on every problem: its due becomes
+//   last_reviewed_at + min(its scheduled interval, cap).
+// A problem reviewed recently lands ~cap days out; one reviewed long ago lands
+// in the past (overdue), which is correct under a tight cap — the daily-queue
+// throttle absorbs the overdue pile. Recomputing from (last_reviewed_at,
+// scheduled_days) rather than from `due` makes this idempotent and SELF-HEALING:
+// it also keeps each problem's latest review row (History's "next due") in sync
+// with the live due. Raising the cap back to "no cap" restores the full FSRS
+// interval. Safe to run on startup and whenever the cap changes.
+export function reclampDueDates(db: Database.Database, maxIntervalDays: number): void {
   db.transaction(() => {
-    rows.forEach((row, i) => {
-      const offset = Math.min(maxIntervalDays, Math.floor(i / perDay));
-      update.run(addDaysIso(today, offset), row.problem_id);
-    });
+    db.prepare(`
+      UPDATE problem_state
+      SET due = date(last_reviewed_at, '+' || min(scheduled_days, ?) || ' days')
+    `).run(maxIntervalDays);
+
+    db.prepare(`
+      UPDATE reviews
+      SET next_review_at = (SELECT due FROM problem_state WHERE problem_id = reviews.problem_id)
+      WHERE id IN (SELECT MAX(id) FROM reviews GROUP BY problem_id)
+        AND problem_id IN (SELECT problem_id FROM problem_state)
+    `).run();
   })();
 }
 
